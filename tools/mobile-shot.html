@@ -28,6 +28,13 @@ f.addEventListener('load', function () {
       await wait(700);
       if (w.RP.chat.renderComposer) w.RP.chat.renderComposer();
     }
+    if (v === 'chat') {
+      /* 真机截图里的场景：刚进一个本子（有剧情提醒卡与「本场规则已隐藏」），看竖向空间够不够 */
+      const list = w.RP.resources.playable();
+      const pick = list.filter(function (r) { return r.id === 'yuye-zhensuo'; })[0] || list[0];
+      if (pick) w.RP.app.play(pick.id);
+      await wait(900);
+    }
     await wait(800);
     document.title = 'SHOT';
   })();

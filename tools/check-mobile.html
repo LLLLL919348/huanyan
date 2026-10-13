@@ -101,6 +101,37 @@ document.getElementById('f').addEventListener('load', function () {
       }
 
       P('');
+
+      P('【对话页竖向预算（手机上最值钱的是空间）】');
+      {
+        const head = d.querySelector('#view-chat .chat-head');
+        const comp = d.querySelector('#view-chat .composer');
+        const stage = d.querySelector('#view-chat .chat-stage');
+        const foot = d.querySelector('.global-foot');
+        const hint = d.querySelector('#view-chat .composer-hint');
+        const spoiler = d.querySelector('#view-chat .spoiler.locked');
+        const hh = head ? Math.round(head.getBoundingClientRect().height) : 0;
+        const ch = comp ? Math.round(comp.getBoundingClientRect().height) : 0;
+        const sh = stage ? Math.round(stage.getBoundingClientRect().height) : 0;
+        const fh = foot ? Math.round(foot.getBoundingClientRect().height) : 0;
+        P('      头部 ' + hh + 'px · 消息区 ' + sh + 'px · 输入区 ' + ch + 'px · 页脚 ' + fh + 'px');
+        ok(hh > 0 && hh <= 112, '聊天头部不超过 112px（实际 ' + hh + '）');
+        ok(ch > 0 && ch <= 150, '输入区不超过 150px（实际 ' + ch + '）');
+        const hintsRow = d.querySelector('#view-chat .hints');
+        if (hintsRow) { const hr = Math.round(hintsRow.getBoundingClientRect().height); ok(hr <= 42, '开场提示胶囊只有一行（实际 ' + hr + 'px，横向滑动查看其余）'); }
+        ok(fh <= 26, '对话页页脚压到一行（实际 ' + fh + 'px）');
+        ok(sh >= 320, '消息区至少 320px 高（实际 ' + sh + '）');
+        if (hint) {
+          const extras = hint.querySelectorAll('.hint-2');
+          let visible = 0;
+          Array.prototype.forEach.call(extras, function (elm) { if (w.getComputedStyle(elm).display !== 'none') visible++; });
+          ok(extras.length > 0 && visible === 0, '次要提示在窄屏隐藏（' + extras.length + ' 条全部隐藏）');
+        }
+        if (spoiler) {
+          const body = spoiler.querySelector('span:not(.lock)');
+          ok(!body || w.getComputedStyle(body).display === 'none', '规则卡在窄屏只留标题一行');
+        }
+      }
       P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
       P('=== 完成 ===');
     } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }

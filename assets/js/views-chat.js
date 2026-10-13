@@ -608,7 +608,8 @@ RP.chat = (function () {
         '<button class="send-btn" id="btnSend"' + (quotaOut ? ' disabled' : '') + '>发送</button></div>' +
         '<div class="composer-hint">' +
         /* 额度只显示这一处。数字来自服务端（客户端那份是它的镜像），
-           以前这里一个「今日额度剩余」、右边又跟一个「本站额度剩余」，两套计数会互相矛盾。 */
+           以前这里一个「今日额度剩余」、右边又跟一个「本站额度剩余」，两套计数会互相矛盾。
+           ★ 手机屏幕窄：带 .hint-2 的都是次要说明，窄屏隐藏（见 style.css 的 ≤700px 段）。 */
         (spendQuota
           ? '<span>今日额度剩余 <b style="color:var(--accent-2)">' + left + '</b> / ' + daily + '</span>' +
             '<span class="quota-tag">本站模型</span>'
@@ -617,10 +618,10 @@ RP.chat = (function () {
         (apiMode === 'none' ? '<span class="quota-tag warn">测试用离线引擎（仅 tools/ 下的冒烟测试）</span>' : '') +
         '<span>·</span><span>积分 <b style="color:var(--accent-2)">' + (RP.store.get().score || 0) + '</b></span>' +
         (RP.api.serverReady()
-          ? '<span>·</span><span>模型：<b style="color:var(--accent-2)">' + RP.util.esc(RP.api.serverInfo().model) + '</b></span>'
+          ? '<span class="hint-2">·</span><span class="hint-2">模型：<b style="color:var(--accent-2)">' + RP.util.esc(RP.api.serverInfo().model) + '</b></span>'
           : '') +
-        '<span>·</span><span>惩戒只认下划线行为台词</span>' +
-        '<span>·</span><span>口述使用道具不算，要点右上角「道具」引用</span></div>';
+        '<span class="hint-2">·</span><span class="hint-2">惩戒只认下划线行为台词</span>' +
+        '<span class="hint-2">·</span><span class="hint-2">口述使用道具不算，要点右上角「道具」引用</span></div>';
       /* 本站额度用尽：输入框照常存在，但给出明确的替代路径（自己的模型 / 明天再来） */
       if (quotaOut) {
         const lock = document.createElement('div');

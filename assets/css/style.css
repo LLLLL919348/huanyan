@@ -1714,6 +1714,47 @@ body[data-mode="light"] .reminder-notice{color:#8a5607;}
   .msg-row,.reminder,.beat,.notice,.execution{padding:0 10px;}
   .composer{padding:10px 10px 8px;}
   .msg-body{max-width:92%;}
+
+  /* ---------- 对话页：手机上最值钱的是竖向空间 ----------
+     实测（真机截图）进对话页时头部 + 规则卡 + 输入区四行提示 + 两行页脚，
+     几乎把消息区挤没了。这里逐块压缩：头部收成两行、规则卡只留标题、
+     输入区提示只留一行、页脚压到一行。 */
+  .chat-head{gap:6px;padding:7px 10px;}
+  .chat-avatar{width:32px;height:32px;border-radius:9px;font-size:15px;}
+  .chat-id{gap:8px;}
+  .chat-id h2{font-size:14.5px;letter-spacing:.05em;}
+  .chat-id .status{font-size:9.5px;padding:1px 6px;margin-left:5px;}
+  /* 「角色：…」那行长描述与心境备注在手机上不显示（资源卡里已有同样信息） */
+  .chat-id p,.mood-note{display:none;}
+  .chat-stats{order:3;width:100%;gap:10px;margin-left:0;}
+  .stat{min-width:0;flex:1;}
+  .stat.wide{flex:1.5;}
+  .stat-top{margin-bottom:2px;}
+  .stat-top span{font-size:9.5px;letter-spacing:.06em;}
+  .stat-top b{font-size:12.5px;}
+  .chat-actions{gap:5px;}
+  .chat-actions .btn.sm{padding:4px 9px;font-size:11px;}
+  /* 开场提示胶囊：手机上排成一行可横向滑动 —— 竖着堆三行要吃掉 100px（实测） */
+  .hints{flex-wrap:nowrap;overflow-x:auto;gap:6px;margin-bottom:7px;padding-bottom:2px;-webkit-overflow-scrolling:touch;}
+  .hints::-webkit-scrollbar{display:none;}
+  .hints .hint-chip{flex:none;font-size:11.5px;padding:5px 10px;}
+  /* 规则卡：只留「🔒 本场规则已隐藏」一行，点开才有正文 */
+  .spoiler.locked{padding:9px 11px;align-items:center;}
+  .spoiler.locked b{margin-bottom:0;font-size:11.5px;}
+  .spoiler.locked span:not(.lock){display:none;}
+  /* 输入区：更矮的输入框 + 只留一行提示（次要说明带 .hint-2，窄屏隐藏） */
+  .composer-box{padding:7px 10px;border-radius:12px;gap:8px;}
+  .composer-box textarea{font-size:14px;min-height:24px;max-height:96px;line-height:1.6;}
+  .composer-tools .item-btn{padding:4px 8px;font-size:11.5px;}
+  .send-btn{padding:9px 16px;font-size:13px;border-radius:11px;}
+  .composer-hint{margin-top:6px;font-size:10.5px;gap:8px;}
+  .composer-hint .hint-2{display:none;}
+  /* 页脚压到一行：手机上三行声明要吃掉 45px，而对话页最缺的就是竖向空间。
+     做法：对话页（body 里有 #view-chat.active 时）只保留第一条声明（内容均为虚构，请勿模仿），
+     其它视图仍然完整显示三条。:has() 在 Edge/Chrome 105+ 都支持。 */
+  .global-foot{font-size:10px;padding:4px 10px;gap:5px;line-height:1.35;}
+  .global-foot .sep{display:none;}
+  body:has(#view-chat.active) .global-foot span:not(:first-child){display:none;}
 }
 /* 更窄（小于 420px）：只剩「幻」字标，标签再收一档 */
 @media (max-width:420px){

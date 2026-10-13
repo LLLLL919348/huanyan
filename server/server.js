@@ -514,7 +514,19 @@ async function handleApi(req, res, pathname) {
   /* --- 资源集合 --- */
   if (pathname === '/api/resources') {
     if (method === 'GET') {
-      return ok(res, { ok: true, resources: resources });
+      /* ★ 公布版：完整角色提示词（resource.prompt）是本项目的核心资产，
+         它里面有角色的全部设定与剧情的"关键答案"。它只在两种情况下需要下发浏览器：
+           ① 后台编辑器（只允许本机/白名单访问）；
+           ② 访客"浏览器直连自己的模型"模式（客户端要自己拼系统提示词）。
+         所以：管理面可达（本机/白名单）就带 prompt，否则剥掉 —— 访客走服务端转发，
+         提示词由服务端组装，浏览器永远拿不到全文。 */
+      const withPrompt = sec.adminReachable(req, settings || {});
+      const list = withPrompt ? resources : resources.map(function (r) {
+        const c = Object.assign({}, r);
+        delete c.prompt;
+        return c;
+      });
+      return ok(res, { ok: true, resources: list, promptIncluded: withPrompt });
     }
     if (method === 'PUT') {
       let body;

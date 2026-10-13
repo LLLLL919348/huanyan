@@ -468,7 +468,9 @@ RP.api = (function () {
     /* ① 经本站服务端转发：
           · 用户自己配了模型 → 带上他的配置（不受浏览器跨域限制，不占站内额度）
           · 否则用站长的模型（默认，计每日额度） */
-    const useProxy = mode() === 'server' || (mode() === 'own' && !cfg.direct);
+    /* 浏览器直连需要客户端自己拼系统提示词；服务端对访客不下发 resource.prompt，
+       这种情况下自动回退到"经本站转发"（提示词由服务端组装，功能不打折）。 */
+    const useProxy = mode() === 'server' || (mode() === 'own' && (!cfg.direct || !resource.prompt));
     if (useProxy) {
       const payload = { resourceId: resource.id, state: serverState(conv, opts), messages: history };
       if (mode() === 'own') {

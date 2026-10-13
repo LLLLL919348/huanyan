@@ -387,6 +387,70 @@ powershell -File tools/run-smoke.ps1 check-state-history   # 无头浏览器，�
 
 > 已知内容问题：`data/resources.json` 里凛（废弃游乐园的等候）的红线写着「当场 -15 并出自 `_〔警告〕_`」——按上面的规则这条不生效（警告不扣血）。要在凛身上实现扣血，得让她用 `_〔惩戒 …〕_`。这是内容侧的措辞，建议在后台改她的规则文本，我没有擅自改角色设定。
 
+## 对外部署（已上线：阿里云 8.138.170.154）
+
+站点已经部署到一台阿里云轻量服务器上（2 核 / 1866 MB，与一台 OpenClaw QQ 机器人共存）。
+
+### 线上形态
+
+| 项 | 值 |
+| --- | --- |
+| 前台 | **http://8.138.170.154/** （公网 80，systemd 系统服务 `huanyan.service`，崩溃自动重拉） |
+| 代码目录 | `/home/admin/huanyan/`（`index.html` + `assets/` + `admin/` + `server/` + `data/`） |
+| 运行参数 | `/home/admin/huanyan/.env`（600，含 `PORT` / `HOST` / `ADMIN_TOKEN`） |
+| 站点模型 | 智谱 GLM-4-Flash（免费档），密钥只在服务端 `data/model.json` |
+| 后台 | **只能从服务器本机访问**（机主走 SSH 隧道），桌面快捷方式「幻言后台（双击打开）」 |
+| 统计 | `data/stats.json` + 后台「访问统计」页 |
+
+### 公布版与开发版的区别（三条加固）
+
+1. **前端不留任何通往后台的入口**：顶栏后台按钮、`openAdmin()`、「我的」里的两个入口按钮全部删除；
+   FAQ 文案也不再提后台路径（`tools/check-exposure.js` 会断言这一点）。
+2. **后台有两道门，缺一不可**（`server/security.js` 的 `adminReachable` + `adminAllowed`）：
+   - ① **能不能访问到**：只有本机（含 SSH 隧道）或 `settings.admin.allowIps` 白名单；
+     其他人访问 `/admin`、`/api/stats`、`/api/export` 一律 **404**（不是 403 —— 403 等于告诉对方「这儿有个后台」）；
+   - ② **有没有令牌**：写接口、敏感 GET 与后台页面仍需 `x-admin-token`。
+   实测：访客侧四处全 404、`PUT /api/settings` 403；回环侧带令牌全 200。
+3. **完整角色提示词不再下发给访客**：`resource.prompt` 是核心资产（含剧情关键答案），
+   现在只有管理面可达时才随 `GET /api/resources` 返回，访客拿不到全文（`promptIncluded:false`）——
+   访客走服务端转发，提示词由服务端组装；访客若开了「浏览器直连自己的模型」，会自动回退到转发模式。
+
+### 服务器上的端口只有两个
+
+| 端口 | 用途 | 说明 |
+| --- | --- | --- |
+| 80 | 站点前台 | 唯一对公网开放的 web 端口 |
+| 22 | SSH | 机主运维 + 后台隧道 |
+| ~~11346~~ | OpenClaw 控制台 | **已收紧为只监听 127.0.0.1**（原来 `bind: lan` 对全网开放，且 `dangerouslyDisableDeviceAuth: true`）。外网实测从「可连接」变为「连接被拒」 |
+
+### 部署与复测命令
+
+```powershell
+# 部署（只上传该上线的文件；docs / tools / README / .git 一律不传）
+powershell -File tools\deploy.ps1            # 加 -DryRun 只看会上传哪些文件
+
+# 暴露面自查（本地与线上都能跑；线上会核对"后台必须 404"）
+node tools\check-exposure.js                 # 静态检查
+node tools\check-exposure.js http://8.138.170.154
+```
+
+`tools/deploy.ps1` 会生成/复用管理令牌并存在 **`%USERPROFILE%\.huanyan-deploy.json`**（仓库外，不入库）。
+桌面上的「幻言后台（双击打开）.cmd」读这个文件，自动建隧道（本机 18080 → 服务器 80）并带令牌打开后台；
+**关掉那个隧道窗口就等于关闭后台入口**。
+
+### 机器人巡检（同一台机器上的 OpenClaw）
+
+| 任务 | 频率 | 做什么 |
+| --- | --- | --- |
+| `huanyan-autocheck`（已启用、已验证） | 每 10 分钟 | 跑 `tools/autocheck.sh`：健康检查不通就重启站点服务，结果写 `data/autocheck.log`；**不投递到任何聊天** |
+| `huanyan-report`（**默认禁用**） | 每天 9:00 | 让模型跑 `health.sh` 并把结论私聊报给机主。启用前需要先确定投递路由（机主私聊机器人一次，或把 openid 填进任务） |
+
+维护规约写在服务器上的 `/mnt/btrfs-workspace/ws-398ab6/SITE-HUANYAN.md`（她自己的工作区）：
+允许的动作只有「只读体检」与「重启站点」，明确禁止改内容/配置、读或输出任何密钥、碰 OpenClaw 自身配置。
+
+> ⚠️ 线索留档：这台机器的 OpenClaw 网关 token 在排查时被打印过一次，交接文档也建议定期轮换 ——
+> 换法：`openclaw config set gateway.auth.token <新值>` 后重启用户服务。
+
 ## 移动端与窄屏
 
 **结论：390px 宽度下可用，且由脚本守着。** 做法与踩过的坑都记在这里。

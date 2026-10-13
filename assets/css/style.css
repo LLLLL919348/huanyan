@@ -1691,3 +1691,33 @@ body[data-mode="light"] .reminder-notice{color:#8a5607;}
   .composer{padding:12px 14px 10px;}
   .msg-body{max-width:86%;}
 }
+/* 窄屏（手机）：实测 390px 下文档被顶到 772px —— 撑宽的唯一源头是顶栏，
+   品牌 + 三个标签 + 额度条 + 三个图标按钮在 26px 间距下排不下，于是整列跟着变宽。
+   这里按 390px 的预算把顶栏逐项收紧；全屏与后台入口在手机上直接收起来。 */
+@media (max-width:700px){
+  .topbar{gap:9px;padding:9px 11px;}
+  .brand{gap:7px;}
+  .brand-mark{width:30px;height:30px;font-size:16px;border-radius:9px;}
+  .brand-text strong{font-size:15px;letter-spacing:.08em;}
+  .nav{gap:3px;padding:3px;min-width:0;}
+  .nav-item{padding:7px 10px;font-size:12.5px;gap:5px;letter-spacing:.02em;white-space:nowrap;}
+  .nav-item svg.ico{width:15px;height:15px;}
+  .nav-dot{top:3px;right:5px;}
+  .topbar-right{gap:6px;}
+  .quota-mini{padding:6px 9px;font-size:11.5px;gap:5px;border-radius:9px;}
+  .quota-mini > span:first-child,.quota-mini .bar{display:none;}
+  .quota-mini b::after{content:' 次';font-size:10.5px;color:var(--text-3);font-weight:400;}
+  .icon-btn{width:32px;height:32px;border-radius:9px;}
+  #btnFocusTop,#btnAdmin{display:none;}
+  .global-foot{font-size:10.5px;padding:6px 10px;gap:6px;}
+  .res-wrap,.profile-wrap{padding:16px 12px 28px;}
+  .msg-row,.reminder,.beat,.notice,.execution{padding:0 10px;}
+  .composer{padding:10px 10px 8px;}
+  .msg-body{max-width:92%;}
+}
+/* 更窄（小于 420px）：只剩「幻」字标，标签再收一档 */
+@media (max-width:420px){
+  .brand-text{display:none;}
+  .nav-item{padding:7px 9px;}
+  .icon-btn{width:30px;height:30px;}
+}

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:390px;height:844px;border:0}
+#out{position:fixed;right:0;top:0;width:560px;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:11px/1.5 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!-- 移动端布局体检：390px 宽下逐个页面量横向溢出，并列出把页面撑宽的元素。
+     故意不加 overflow-x:hidden 兜底 —— 那会把溢出藏起来，让这个脚本说谎。 -->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+let fails = 0;
+function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const vw = 390;
+
+  function measure(tag) {
+    const sw = d.documentElement.scrollWidth;
+    P('【' + tag + '】文档 scrollWidth = ' + sw + 'px' +
+      (sw > vw + 1 ? '  ← 溢出 ' + (sw - vw) + 'px' : '  ← 正常'));
+    ok(sw <= vw + 1, tag + ' 无横向溢出');
+    if (sw > vw + 1) {
+      const bad = [];
+      d.querySelectorAll('body *').forEach(function (el) {
+        const r = el.getBoundingClientRect();
+        if (!r.width && !r.height) return;
+        if (r.right > vw + 1) {
+          const cls = (el.className && typeof el.className === 'string') ? '.' + el.className.trim().split(/\s+/).join('.') : '';
+          bad.push(el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + cls + ' right=' + Math.round(r.right) + ' w=' + Math.round(r.width));
+        }
+      });
+      const seen = {};
+      bad.filter(function (s) { const k = s.replace(/ right=.*/, ''); if (seen[k]) return false; seen[k] = 1; return true; })
+        .slice(0, 8).forEach(function (s) { P('      ' + s.slice(0, 90)); });
+    }
+  }
+
+  (async function () {
+    try {
+      for (let i = 0; i < 60 && !d.querySelector('.res-card'); i++) await wait(200);
+      P('视口 clientWidth = ' + d.documentElement.clientWidth + 'px（模拟手机竖屏）');
+      P('');
+      measure('资源页');
+      P('');
+
+      /* 我的页：把每一档都展开，哪一档都不会把页面撑宽 */
+      const st = w.RP.store.get();
+      st.ui.view = 'profile';
+      Object.keys(st.ui.openAcc).forEach(function (k) { st.ui.openAcc[k] = true; });
+      w.RP.store.save();
+      w.RP.app.setView('profile');
+      await wait(700);
+      measure('我的页（全部展开）');
+      const rows = d.querySelectorAll('#view-profile .acc-item, #view-profile .accordion');
+      P('      「我的」里的折叠块数量: ' + rows.length);
+      P('');
+
+      /* 对话页：先无模型（锁面板），再有模型（正常输入区） */
+      w.RP.api.mode = function () { return 'none'; };
+      w.RP.api.serverInfo = function () { return { serverModel: false, model: '', local: false, dailyQuota: 20, quota: null }; };
+      const list = w.RP.resources.playable();
+      if (list && list.length) w.RP.app.play(list[0].id);
+      await wait(800);
+      if (w.RP.chat.renderComposer) w.RP.chat.renderComposer();
+      await wait(400);
+      measure('对话页（没有模型时的锁面板）');
+      const lock = d.querySelector('.locked-panel.need-model');
+      ok(!!lock, '锁面板在手机上存在');
+      if (lock) {
+        const r = lock.getBoundingClientRect();
+        ok(r.right <= vw + 1, '锁面板没有被截断（右边界 ' + Math.round(r.right) + ' ≤ ' + vw + '）');
+        ok(r.width > 200, '锁面板有可用宽度（' + Math.round(r.width) + 'px）');
+        const btns = lock.querySelectorAll('.btn');
+        P('      锁面板里的按钮: ' + btns.length + ' 个');
+        btns.forEach(function (b) {
+          const br = b.getBoundingClientRect();
+          ok(br.right <= vw + 1, '按钮「' + (b.textContent || '').trim().slice(0, 6) + '」在屏幕内（right=' + Math.round(br.right) + '）');
+        });
+      }
+      P('');
+
+      /* 换回有模型：输入区与发送按钮也得在屏幕内 */
+      w.RP.api.mode = function () { return 'server'; };
+      w.RP.api.serverInfo = function () { return { serverModel: true, model: 'rp-qwen3b:latest', local: true, dailyQuota: 20, quota: { left: 20, limit: 20 } }; };
+      if (w.RP.chat.renderComposer) w.RP.chat.renderComposer();
+      await wait(400);
+      measure('对话页（正常输入区）');
+      const comp = d.querySelector('.composer');
+      if (comp) {
+        const r = comp.getBoundingClientRect();
+        ok(r.right <= vw + 1, '输入区没有被截断（right=' + Math.round(r.right) + '）');
+        const send = d.querySelector('#btnSend, .send-btn');
+        if (send) {
+          const sr = send.getBoundingClientRect();
+          ok(sr.right <= vw + 1, '发送按钮在屏幕内（right=' + Math.round(sr.right) + '）');
+        } else { P('      （没找到发送按钮的选择器，跳过）'); }
+      }
+
+      P('');
+      P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

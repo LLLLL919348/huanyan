@@ -462,6 +462,41 @@ node server/server.js 5599
 
 
 
+## 备份到 GitHub
+
+站点内容已备份到 **https://github.com/LLLLL919348/huanyan**。远端历史三层：`Initial commit`（建仓时的占位 README）→ 站点内容快照 → 免费额度面板；快照与本地提交的 **tree 哈希完全一致**，即 72 个文件逐字节相同。
+
+### 再推一次备份
+
+**① 先开代理。** 这台机器直连 `github.com` 是被拦的 —— TCP 三次握手能通（`Test-NetConnection github.com -Port 443` 显示「通」），但 TLS 之后没有任何响应，`curl` 会以退出码 28 超时；`raw.githubusercontent.com` 同样被拦。**但 `api.github.com` 是通的**，所以查仓库信息不需要代理，推代码需要。开着 Clash for Windows（打开「系统代理」）即可。
+
+**② 双击根目录的 `推送到GitHub.cmd`**，按提示写一句本次说明，回车即可。脚本会先检查 7890 端口有没有代理在听，没有就明确告诉你先去开 Clash，不会闷头失败。
+
+**③ 凭据已存在 Windows 凭据管理器**（`git:https://github.com`），正常情况下不会再要你登录；万一失效，重新推一次会弹浏览器，点一下 Authorize 就行（Git Credential Manager 是 Git for Windows 自带的官方凭据管理器）。
+
+### 故意不进仓库的东西
+
+| 文件 | 为什么不进 |
+| --- | --- |
+| `data/model.json` | 现在填的是本机 ollama，将来换成云端服务商就含密钥；模板见 `data/model.example.json` |
+| `data/quota.json` | 访客额度状态，每次运行都在变，且含访客标识 |
+| `data/server-error.log` | 运行日志 |
+| `tools/shots/` | 64 张测试截图共 22 MB，随时能用 `tools/shoot.ps1` 重新生成 |
+
+规则写在 `.gitignore` 里，新增运行期文件时记得同步加进去。
+
+### 换台电脑怎么恢复
+
+```bash
+git clone https://github.com/LLLLL919348/huanyan.git
+cd huanyan
+copy data\model.example.json data\model.json   # 按注释填回 base / key / model
+```
+
+角色、提示词、全部文案都在 `data/resources.json` 与 `data/settings.json` 里，克隆下来就是完整站点，双击 `启动站点.cmd` 即可运行。
+
+
+
 ## 外观与配色
 
 默认是**浅色「纸感」**（暖白纸面 + 深墨字，对比度约 11:1，久看不累），顶栏右上角的**太阳 / 月亮按钮**可在浅色与深色之间一键切换，两边各自记住上次选的皮肤。

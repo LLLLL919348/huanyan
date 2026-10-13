@@ -103,7 +103,12 @@ curl -s -m 8 -o /dev/null -w '健康检查 HTTP %{http_code}\n' http://127.0.0.1
 EOF
 chmod +x "$APP_DIR/tools/restart.sh"
 
-echo "=== 4) 启动服务 ==="
+echo "=== 4) 收紧密钥文件权限（model.json 里有模型密钥，必须 600）==="
+chmod 600 "$ENV_FILE"
+[ -f "$APP_DIR/data/model.json" ] && chmod 600 "$APP_DIR/data/model.json"
+ls -l "$ENV_FILE" "$APP_DIR/data/model.json" 2>/dev/null | awk '{print "  "$1" "$9}'
+
+echo "=== 5) 启动服务 ==="
 sudo systemctl restart huanyan.service
 sleep 3
 printf '服务状态: '; systemctl is-active huanyan.service

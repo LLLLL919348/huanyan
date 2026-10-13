@@ -94,7 +94,7 @@ RP.catalog = {
     { id: 'token', name: '重启令牌', icon: '🎴', desc: '解除禁言与封口，并重置本场剧情', count: 1 }
   ],
   startScore: 100,        // 初始赠予的积分（用于体验商店）
-  dailyQuota: 20
+  dailyQuota: 30
 };
 
 /* ------------------------------ 状态仓库 ------------------------------ */
@@ -249,6 +249,19 @@ RP.store = (function () {
     spendQuota: function (n) {
       state.user.quota.used = RP.util.clamp(state.user.quota.used + (n || 1), 0, state.user.quota.daily);
       save();
+    },
+    /* 用服务端的真额度覆盖本地这份（api.js 每次拿到服务端 quota 都会调）。
+       没有它就会出现两个互相矛盾的额度显示：左边是本地自己减的、右边是服务端的真数。
+       上限跟着服务端走，这样后台 model.json 改额度，前端立刻跟着变。 */
+    mirrorQuota: function (limit, left) {
+      if (!(limit > 0)) return false;
+      const used = Math.max(0, limit - Math.max(0, Math.min(left, limit)));
+      if (state.user.quota.daily === limit && state.user.quota.used === used) return false;
+      state.user.quota.daily = limit;
+      state.user.quota.used = used;
+      state.user.quota.day = RP.util.dayKey();
+      save();
+      return true;
     },
     /* 资源状态 */
     res: function (id) {

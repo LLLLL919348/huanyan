@@ -575,6 +575,7 @@ RP.chat = (function () {
         '<button class="btn" data-goto="resources">换一个本子</button></div></div>';
     } else {
       const left = RP.store.quotaLeft();
+      const daily = RP.store.get().user.quota.daily;
       const d = draftOf(conv);
       const boss = conv.kind === 'assistant';
       /* 只有「用本站模型」才吃每日额度：自带模型不占 */
@@ -605,14 +606,18 @@ RP.chat = (function () {
         '</div>') +
         '</div>' +
         '<button class="send-btn" id="btnSend"' + (quotaOut ? ' disabled' : '') + '>发送</button></div>' +
-        '<div class="composer-hint"><span>今日额度剩余 <b style="color:var(--accent-2)">' + left + '</b> / ' + RP.store.get().user.quota.daily + '</span>' +
-        (spendQuota ? '<span class="quota-tag">本站模型 · 每日 ' + RP.store.get().user.quota.daily + ' 次</span>' : '') +
+        '<div class="composer-hint">' +
+        /* 额度只显示这一处。数字来自服务端（客户端那份是它的镜像），
+           以前这里一个「今日额度剩余」、右边又跟一个「本站额度剩余」，两套计数会互相矛盾。 */
+        (spendQuota
+          ? '<span>今日额度剩余 <b style="color:var(--accent-2)">' + left + '</b> / ' + daily + '</span>' +
+            '<span class="quota-tag">本站模型</span>'
+          : '') +
         (apiMode === 'own' ? '<span class="quota-tag ok">你自己的模型 · 不占额度</span>' : '') +
         (apiMode === 'none' ? '<span class="quota-tag warn">测试用离线引擎（仅 tools/ 下的冒烟测试）</span>' : '') +
         '<span>·</span><span>积分 <b style="color:var(--accent-2)">' + (RP.store.get().score || 0) + '</b></span>' +
         (RP.api.serverReady()
-          ? '<span>·</span><span>模型：<b style="color:var(--accent-2)">' + RP.util.esc(RP.api.serverInfo().model) + '</b>' +
-            (RP.api.serverInfo().quota ? '（本站额度剩余 ' + RP.api.serverInfo().quota.left + '/' + RP.api.serverInfo().quota.limit + '）' : '') + '</span>'
+          ? '<span>·</span><span>模型：<b style="color:var(--accent-2)">' + RP.util.esc(RP.api.serverInfo().model) + '</b></span>'
           : '') +
         '<span>·</span><span>惩戒只认下划线行为台词</span>' +
         '<span>·</span><span>口述使用道具不算，要点右上角「道具」引用</span></div>';

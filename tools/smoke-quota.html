@@ -27,10 +27,11 @@ document.getElementById('f').addEventListener('load', function () {
     try {
       for (let i = 0; i < 60 && !d.querySelector('.res-card'); i++) await wait(200);
 
-      /* ---- 1. 额度上限来自站点设置（20），不是硬编码的旧值 ---- */
+      /* ---- 1. 额度上限来自站点设置，不是硬编码的旧值 ---- */
       P('【额度上限】');
-      ok(quota().daily === 20, '每日额度为 20', '实际 ' + quota().daily);
-      ok(quota().daily === w.RP.settings.get().site.dailyQuota, '与 settings.site.dailyQuota 一致');
+      const Q = w.RP.settings.get().site.dailyQuota;
+      ok(quota().daily === Q, '每日额度跟随后台设置（' + Q + '）', '实际 ' + quota().daily);
+      ok(Q === 30, '当前配置为 30 次/人/天', '实际 ' + Q);
 
       /* ---- 2. 没有模型 = 不能对话（产品铁律：对话必须由模型主导） ---- */
       P('【没有模型时不能对话】');
@@ -57,16 +58,22 @@ document.getElementById('f').addEventListener('load', function () {
       /* serverReady/ serverInfo 也要装作有 */
       const realReady = w.RP.api.serverReady, realInfo = w.RP.api.serverInfo;
       w.RP.api.serverReady = function () { return true; };
-      w.RP.api.serverInfo = function () { return { serverModel: true, model: 'deepseek-chat', dailyQuota: 20, quota: { left: 0, limit: 20 } }; };
+      w.RP.api.serverInfo = function () { return { serverModel: true, model: 'deepseek-chat', dailyQuota: Q, quota: { left: 0, limit: Q } }; };
 
       quota().used = 12; w.RP.store.save();
       w.RP.chat.renderComposer();
       await wait(120);
       ok(composer().querySelectorAll('.locked-panel.quota').length === 0, '还有额度时不显示额度面板');
       ok(!d.getElementById('btnSend').disabled, '还有额度时发送按钮可用');
-      ok(/本站模型 · 每日 20 次/.test(composer().innerHTML), '标注「本站模型 · 每日 20 次」');
+      ok(/今日额度剩余/.test(composer().innerHTML), '显示「今日额度剩余」');
+      ok(/本站模型/.test(composer().innerHTML), '标注这是本站模型（吃额度）');
+      /* 额度只能有一处显示：以前左边「今日额度剩余」+ 右边「本站额度剩余」两套计数会互相矛盾 */
+      const hint = composer().querySelector('.composer-hint');
+      const quotaMentions = (hint ? hint.innerHTML.match(/额度/g) || [] : []).length;
+      ok(quotaMentions === 1, '输入区上方只出现一处「额度」（实际 ' + quotaMentions + ' 处）', hint ? hint.textContent.slice(0, 120) : '');
+      ok(!/本站额度剩余/.test(composer().innerHTML), '不再重复显示第二份额度');
 
-      quota().used = 20; w.RP.store.save();
+      quota().used = Q; w.RP.store.save();
       w.RP.chat.renderComposer();
       await wait(120);
       const panel = composer().querySelector('.locked-panel.quota');
@@ -102,7 +109,7 @@ document.getElementById('f').addEventListener('load', function () {
       ok(composer().querySelectorAll('.locked-panel.quota').length === 0, '额度已用尽但仍不挡自带模型');
       ok(!d.getElementById('btnSend').disabled, '自带模型时发送按钮可用');
       ok(/你自己的模型 · 不占额度/.test(composer().innerHTML), '标注「你自己的模型 · 不占额度」');
-      ok(quota().used === 20, '额度数字保持不变（不扣）', 'used=' + quota().used);
+      ok(quota().used === Q, '额度数字保持不变（不扣）', 'used=' + quota().used);
 
       w.RP.api.mode = realMode; w.RP.api.serverReady = realReady; w.RP.api.serverInfo = realInfo;
       w.RP.store.get().api.enabled = false; w.RP.store.save();

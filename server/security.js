@@ -150,7 +150,7 @@ function readModelConfig() {
     key: String(cfg.key || ''),
     model: String(cfg.model || ''),
     temp: Number(cfg.temp) || 0.85,
-    dailyQuota: Number(cfg.dailyQuota) > 0 ? Number(cfg.dailyQuota) : 20,
+    dailyQuota: Number(cfg.dailyQuota) > 0 ? Number(cfg.dailyQuota) : 30,
     maxTokens: Number(cfg.maxTokens) > 0 ? Number(cfg.maxTokens) : 800,
     timeoutMs: Number(cfg.timeoutMs) > 0 ? Number(cfg.timeoutMs) : 45000
   };

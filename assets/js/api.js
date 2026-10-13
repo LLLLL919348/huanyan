@@ -11,7 +11,15 @@ RP.api = (function () {
   const ASSISTANT_ID = '__assistant';
   /* 服务端模型：站长在 data/model.json（或 MODEL_* 环境变量）里配一次，所有人共用，
      密钥不出服务端；额度按访客每日 30 次。访客也可以自带 key 直连（仅在本地/自用时有意义）。 */
-  let server = { serverModel: false, model: '', dailyQuota: 20, quota: null };
+  let server = { serverModel: false, model: '', dailyQuota: 30, quota: null };
+
+  /* 服务端额度是真额度（security.js 的 consumeQuota 按访客 cookie 计数），客户端这份只是镜像。
+     以前两套各记各的，日切边界又不同 —— 实测出现过输入框上方左边「剩余 19/20」、
+     右边「本站额度剩余 0/20」同时显示且互相矛盾。现在收到服务端数字就覆盖本地那份。 */
+  function mirrorQuota(q) {
+    if (!q || !RP.store || !RP.store.mirrorQuota) return;
+    RP.store.mirrorQuota(Number(q.limit) || 0, Number(q.left) || 0);
+  }
 
   function serverReady() { return !!server.serverModel; }
   function serverInfo() { return server; }
@@ -20,7 +28,10 @@ RP.api = (function () {
       const r = await fetch('/api/model', { cache: 'no-store' });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const d = await r.json();
-      if (d && d.ok) server = { serverModel: !!d.serverModel, model: d.model || '', dailyQuota: d.dailyQuota || 30, quota: d.quota || null };
+      if (d && d.ok) {
+        server = { serverModel: !!d.serverModel, model: d.model || '', dailyQuota: d.dailyQuota || 30, quota: d.quota || null };
+        mirrorQuota(server.quota);
+      }
     } catch (e) { /* 没有后端就保持关闭 */ }
     return server;
   }
@@ -29,7 +40,7 @@ RP.api = (function () {
       const r = await fetch('/api/quota', { cache: 'no-store' });
       if (!r.ok) return null;
       const d = await r.json();
-      if (d && d.ok) { server.quota = d.quota; return d.quota; }
+      if (d && d.ok) { server.quota = d.quota; mirrorQuota(d.quota); return d.quota; }
     } catch (e) { }
     return null;
   }
@@ -422,7 +433,7 @@ RP.api = (function () {
         if (j.done) { finalText = j.text || full; if (j.quota) quotaInfo = j.quota; }
       }
     }
-    if (quotaInfo) server.quota = quotaInfo;
+    if (quotaInfo) { server.quota = quotaInfo; mirrorQuota(quotaInfo); }
     if (err && !full.trim()) throw new Error(err);
     const text = String(finalText || full || '');
     if (!text.trim()) throw new Error(err || '模型返回为空');
@@ -470,7 +481,7 @@ RP.api = (function () {
       });
       const d = await r.json().catch(function () { return null; });
       if (!r.ok || !d || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
-      if (d.quota) server.quota = d.quota;
+      if (d.quota) { server.quota = d.quota; mirrorQuota(d.quota); }
       const parsed0 = parseState(String(d.text || ''));
       const safe0 = sanitize(parsed0.text);
       return {
@@ -549,7 +560,7 @@ RP.api = (function () {
       });
       const d = await r.json().catch(function () { return null; });
       if (!r.ok || !d || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
-      if (d.quota) server.quota = d.quota;
+      if (d.quota) { server.quota = d.quota; mirrorQuota(d.quota); }
       return { text: String(d.text || '').trim(), via: mode() === 'own' ? 'own' : 'server' };
     }
     /* ② 浏览器直连自己的接口（提示词用本地等价版本） */

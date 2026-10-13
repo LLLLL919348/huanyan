@@ -57,17 +57,29 @@ document.getElementById('f').addEventListener('load', function () {
     '今夜就到这儿。最后一句：你希望我查下去吗？'
   ];
   const N = Number(new URLSearchParams(location.search).get('n') || LINES.length);
+  /* ?model=local 时改用访客自带模型通道指向本机 ollama（用于跟云端模型做同条件对比）。
+     两条路都走服务端 /api/chat，客户端结算逻辑完全相同，所以差异只来自模型本身。 */
+  const WHICH = new URLSearchParams(location.search).get('model') || 'site';
+  /* 「主动推进」的量化代理指标：这轮 AI 说了几个玩家没提过的剧情词 */
+  const KEYS = ['卷宗', '第十页', '第十二', '司灯署', '大理寺卿', '灯芯', '记号', '灭灯', '灯市', '上元',
+    '御史台', '灭门', '旧案', '活口', '同僚', '雨夜', '三更', '虎符', '铜铃', '灯谜'];
 
   (async function () {
     try {
       for (let i = 0; i < 60 && !d.querySelector('.res-card'); i++) await wait(200);
       const res = w.RP.resources.byId('changan-yeweiyang') || w.RP.resources.playable()[0];
+      if (WHICH === 'local') {
+        const st = w.RP.store.get();
+        st.api = { enabled: true, base: 'http://127.0.0.1:11434/v1', key: 'local', model: 'rp3b:latest', temp: 0.8, direct: false };
+        w.RP.store.save();
+      }
       w.RP.app.play(res.id);
       await wait(600);
       const conv = w.RP.store.active();
-      P('本子：' + res.name + '   模型模式：' + w.RP.api.mode() + '（server = 用你们配的本站模型）');
+      P('本子：' + res.name + '   模型：' + (WHICH === 'local' ? '本机 rp3b:latest（3B，CPU）' : '本站模型 glm-4-flash（云端）') +
+        '   模式：' + w.RP.api.mode());
       P('');
-      P('轮次 | 状态值 | 心境   | 推进度 | 越界计数 | 本轮角色台词（截断）');
+      P('轮次 | 状态值 | 心境   | 推进度 | 越界计数 | 新剧情词 | 本轮角色台词（截断）');
 
       for (let i = 0; i < N; i++) {
         const before = { hp: conv.hp, prog: conv.progress, aff: conv.affinity };
@@ -77,13 +89,17 @@ document.getElementById('f').addEventListener('load', function () {
         const last = ais[ais.length - 1];
         const txt = last ? String(last.text).replace(/\s+/g, ' ') : '（无回复）';
         const acts = (txt.match(/_〔[^〕]*〕/g) || []).join(' ');
+        /* 主动推进的量化代理：AI 这轮新提到了几个玩家没说过的剧情词 */
+        const fresh = KEYS.filter(function (k) { return txt.indexOf(k) > -1 && line.indexOf(k) === -1; });
         const dHp = conv.hp - before.hp, dProg = conv.progress - before.prog, dAff = conv.affinity - before.aff;
         P(String(i + 1).padStart(3) + '  |  ' + String(conv.hp).padStart(4) + '  | ' +
           String(w.RP.chat.moodOf(conv.affinity).name).padEnd(6) + ' | ' +
           String(conv.progress + '%').padStart(5) + '  | ' + String(conv.warned || 0).padStart(6) + '   | ' +
-          txt.slice(0, 46) + (acts ? '   ← 行为台词 ' + acts : '') +
+          String(fresh.length).padStart(6) + '   | ' +
+          txt.slice(0, 44) + (acts ? '  ← ' + acts : '') +
           '   [' + (dHp ? '血 ' + dHp : '血 0') + ' / ' + (dProg ? '进度 +' + dProg : '进度 0') +
-          ' / ' + (dAff ? '好感 ' + dAff : '好感 0') + ']');
+          ' / ' + (dAff ? '好感 ' + dAff : '好感 0') + ']' +
+          (fresh.length ? '  新词: ' + fresh.slice(0, 5).join('、') : ''));
         if (!last) { P('      !! 这一轮没有拿到回复，后面不再继续'); break; }
         if (conv.muted || conv.paused || conv.left) { P('      （本场已结束：muted=' + !!conv.muted + ' paused=' + !!conv.paused + ' left=' + !!conv.left + '）'); break; }
       }

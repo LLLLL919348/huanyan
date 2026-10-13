@@ -1103,14 +1103,39 @@ RP.chat = (function () {
     stickBottom(box);
   }
 
+  /* 剧情节点卡（resource.beats）的触发时机。
+     以前只按轮次：at=5/10/15/20/25 卡死了节奏。但推进度是模型逐轮按「玩家这句话的实际作用」
+     判出来的 —— 会玩的人 8 轮就推到 60%，那张 key 卡（at=25）永远等不到；反过来磨蹭的玩家
+     到点也会被硬塞节点。现在改成「谁先到谁触发」，每张卡只放一次：
+       · 推进度跨过阈值（把 at 等比映射到 85%，最后一档刚好落在通关阈值 95% 之前）
+       · 或者回合数到点（模型没给推进度时的兜底，保证不会卡住） */
+  const BEAT_SCALE = 85;
+  function beatThreshold(beat, beats) {
+    const maxAt = beats.reduce(function (m, b) { return Math.max(m, Number(b.at) || 0); }, 0) || 1;
+    return Math.round((Number(beat && beat.at) || 0) / maxAt * BEAT_SCALE);
+  }
+  function takeDueBeat(conv, resource, progress, byTurn) {
+    const beats = (resource && resource.beats) || [];
+    if (!beats.length) return null;
+    conv.beatsShown = conv.beatsShown || [];
+    for (let i = 0; i < beats.length; i++) {
+      if (conv.beatsShown.indexOf(i) > -1) continue;
+      const at = Number(beats[i].at) || 0;
+      const hit = byTurn ? (conv.turn >= at) : (progress >= beatThreshold(beats[i], beats));
+      if (hit) { conv.beatsShown.push(i); return beats[i]; }
+    }
+    return null;
+  }
+
   /* 在线回复：行为台词是唯一裁决凭证。
      holder 存在时表示这条 AI 消息已经在列表里（流式占位），不再重复 push。 */
   function applyOnline(conv, resource, r, opts, holder) {
     opts = opts || {};
     conv.turn += 1;
     const beforeProg = conv.progress || 0;
-    const beat = (resource.beats || []).filter(function (b) { return b.at === conv.turn; })[0];
-    if (beat) pushMsg(conv, { role: 'beat', text: beat.text, meta: { beat: true, key: !!beat.key } });
+    /* 回合到点的兜底卡：放在角色回复之前，读起来像「场景先变，角色再开口」 */
+    const beatByTurn = takeDueBeat(conv, resource, beforeProg, true);
+    if (beatByTurn) pushMsg(conv, { role: 'beat', text: beatByTurn.text, meta: { beat: true, key: !!beatByTurn.key } });
     /* stateRaw：模型这一轮原文里的状态行。必须存下来 —— 下一轮它要作为「历史格式」回到提示词里，
        否则模型看到的历史是「角色回复不带状态行」，它会照着模仿，状态行从此再也不出现。
        实测见 tools/check-zhipu-state.js 与 api.js 里 toHistory 的注释。 */
@@ -1212,6 +1237,13 @@ RP.chat = (function () {
       const evs = [];
       achievement(conv, resource, v.progress, evs, beforeProg);
       evs.forEach(function (e) { pushMsg(conv, e); });
+    }
+    /* 推进度驱动的「提前触发」：模型判定玩家这句话真的把剧情往前推了，节点卡就不再等回合数。
+       必须放在 achievement() 之后 —— 推进度是在那里才落进 conv 的。
+       它排在角色回复与结算提示之后：场景变化是这句台词的后果，读起来顺。 */
+    const beatByProg = takeDueBeat(conv, resource, conv.progress || 0, false);
+    if (beatByProg) {
+      pushMsg(conv, { role: 'beat', text: beatByProg.text, meta: { beat: true, key: !!beatByProg.key, early: true } });
     }
     /* 角色给出的剧情帮助 / 处置 */
     if (v.aid) {

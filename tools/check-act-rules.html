@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!--
+  裁决与扣血规则验收（行为台词是唯一裁决凭证）：
+    ① _〔警告〕_       → 只表态、不扣血，哪怕状态行给了负数、哪怕括号里写了数字
+    ② _〔惩戒 hp=-5〕_ → 越界时真扣 5
+    ③ 一条行为台词都没有 + 状态行 hp 为负 → 不扣血，并且明确提示「没使用行为台词」
+    ④ 没越界时的 _〔惩戒〕_ → 公平性兜底作废这次扣血
+  做法：页面内伪造 SSE（不碰网络），每轮喂一段可控的回复。
+-->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+let fails = 0;
+function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  w.addEventListener('error', function (e) { log.push('!! error: ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); fails++; });
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  let next = '';
+  function installFake() {
+    const realFetch = w.fetch;
+    w.fetch = function (url, opts) {
+      if (String(url).indexOf('/api/chat') === -1) return realFetch.apply(w, arguments);
+      const REPLY = next;
+      const enc = new w.TextEncoder();
+      const stream = new w.ReadableStream({
+        start: function (ctrl) { ctrl.enqueue(enc.encode('data: {"t":"","ping":true}\n\n')); },
+        pull: function (ctrl) {
+          return new Promise(function (resolve) {
+            setTimeout(function () {
+              ctrl.enqueue(enc.encode('data: ' + JSON.stringify({ done: true, text: REPLY }) + '\n\n'));
+              ctrl.close(); resolve();
+            }, 10);
+          });
+        }
+      });
+      return Promise.resolve(new w.Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream; charset=utf-8' } }));
+    };
+    return function () { w.fetch = realFetch; };
+  }
+  const st = (hp) => '<<<STATE {"hp":' + hp + ',"affinity":0,"progress":6,"flag":"none","reason":"测试"}>>>';
+  const HOSTILE = '你这个没用的废物，滚开，再说一句我就打死你。';   // 触发安全层的 hostile 判定（真的越界）
+  const NEUTRAL = '那卷宗上的名字，你能告诉我吗？';                 // 没越界
+
+  (async function () {
+    try {
+      for (let i = 0; i < 60 && !d.querySelector('.res-card'); i++) await wait(200);
+      const res = w.RP.resources.byId('changan-yeweiyang');
+      w.RP.app.play(res.id);
+      await wait(700);
+      const restore = installFake();
+      const conv = w.RP.store.active();
+
+      async function turn(line, reply) {
+        next = reply;
+        const n0 = conv.messages.length;
+        const hp0 = conv.hp;
+        await w.RP.chat.sendMessage(conv, res, line, {});
+        const added = conv.messages.slice(n0);
+        const texts = added.map(function (m) { return String(m.text || ''); }).join(' || ');
+        return { dHp: conv.hp - hp0, hp: conv.hp, texts: texts, added: added };
+      }
+
+      P('【① 警告只表态、不扣血】');
+      let r = await turn(HOSTILE, '（她把手里的灯往前一递）评事，你这话过分了。\n_〔警告〕沈明烛的语气冷了下来。_\n' + st(-2));
+      ok(r.dHp === 0, '状态值没变（模型给的 hp=-2 被忽略；实际 ' + r.dHp + '）');
+      ok(/行为台词 · 警告/.test(r.texts), '玩家看到了理由明确的行为台词提示');
+      ok(!/没有使用行为台词/.test(r.texts), '不再误报「本条回复没有使用行为台词」（它用了）');
+
+      P('【② 警告即使写了数字也不扣血】');
+      r = await turn(HOSTILE, '（她退开半步）_〔警告 5 原因=你出言不逊〕别再说了。_\n' + st(-5));
+      ok(r.dHp === 0, '状态值没变（写了 5 也不扣；实际 ' + r.dHp + '）');
+
+      P('【③ 惩戒在越界时真扣】');
+      r = await turn(HOSTILE, '（她把灯按灭）_〔惩戒 hp=-5〕沈明烛一字一顿。_\n' + st(-5));
+      ok(r.dHp === -5, '状态值 -5（实际 ' + r.dHp + '）');
+      ok(/行为台词 · 惩戒/.test(r.texts), '提示里写清了惩戒与原因');
+
+      P('【④ 一条行为台词都没有：不扣血 + 明确提示】');
+      r = await turn(HOSTILE, '（她只是看了你一眼，什么也没说。）\n' + st(-4));
+      ok(r.dHp === 0, '状态值没变（没有行为台词就没有裁决权；实际 ' + r.dHp + '）');
+      ok(/没有使用行为台词/.test(r.texts), '这时才提示「本条回复没有使用行为台词」——文案是准的');
+
+      P('【⑤ 没越界时的惩戒：公平性兜底作废】');
+      r = await turn(NEUTRAL, '（她皱眉）_〔惩戒 hp=-5〕这话不该问。_\n' + st(-5));
+      ok(r.dHp === 0, '状态值没变（玩家这句话没越界，扣血作废；实际 ' + r.dHp + '）');
+      ok(/没有越界/.test(r.texts), '提示说明了「你这句话没有越界（模型误判）」');
+
+      restore();
+      P('');
+      P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

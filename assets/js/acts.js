@@ -128,7 +128,11 @@ RP.acts = (function () {
     if (hp < 0 && !instant && Math.abs(hp) > cap) hp = -cap;
     if (hp > 0) hp = Math.min(hp, maxHp);
 
-    const voided = (Number(state.hp) < 0) && punishActs.length === 0;
+    /* 「扣血作废」只在这种情况成立：模型想扣血（状态行给了负数）但**一条行为台词都没有** ——
+       行为台词是唯一裁决凭证。以前写成 punishActs.length === 0，于是「_〔警告〕_ + 状态行 hp=-2」
+       也会被当成「没使用行为台词」，玩家看到一句明显不对的提示（它明明用了）。
+       警告本来就不扣血（站长确认的规则），所以这里不该报「没使用行为台词」。 */
+    const voided = (Number(state.hp) < 0) && list.length === 0;
     let mute = 0, resist = false, execute = false, leave = false;
     list.forEach(function (a) {
       if (a.effect === 'mute') mute = Math.max(mute, a.mute || 1);

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!--
+  剧情节点卡（beats）触发时机验收：
+    ① 推进度跨过阈值就提前放卡（不再死等 at=5/10/15/20/25 回合）
+    ② 模型没给推进度时，回合到点兜底放（不会卡住）
+    ③ 同一张卡只放一次；一次只放一张（大步跳进也不会一次刷三张）
+    ④ key 卡的阈值落在通关阈值之前
+  做法：页面内伪造 SSE（不碰网络），按队列逐轮喂不同的 progress。
+-->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+let fails = 0;
+function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  w.addEventListener('error', function (e) { log.push('!! error: ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); fails++; });
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  let queue = [];        // 每轮取一个 progress 值
+  function installFake() {
+    const realFetch = w.fetch;
+    w.fetch = function (url, opts) {
+      if (String(url).indexOf('/api/chat') === -1) return realFetch.apply(w, arguments);
+      const prog = queue.length ? queue.shift() : 0;
+      const REPLY = '（她把灯往你这边偏了半寸）这件事，不该在灯市里说。\n' +
+        '<<<STATE {"hp":0,"affinity":0,"progress":' + prog + ',"flag":"none","reason":"推进"}>>>';
+      const enc = new w.TextEncoder();
+      const stream = new w.ReadableStream({
+        start: function (ctrl) { ctrl.enqueue(enc.encode('data: {"t":"","ping":true}\n\n')); },
+        pull: function (ctrl) {
+          return new Promise(function (resolve) {
+            setTimeout(function () {
+              ctrl.enqueue(enc.encode('data: ' + JSON.stringify({ done: true, text: REPLY }) + '\n\n'));
+              ctrl.close(); resolve();
+            }, 10);
+          });
+        }
+      });
+      return Promise.resolve(new w.Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream; charset=utf-8' } }));
+    };
+    return function () { w.fetch = realFetch; };
+  }
+
+  const beats = () => (w.RP.store.active().messages || []).filter(function (m) { return m.role === 'beat' && m.meta && m.meta.beat; });
+  const lastBeat = () => beats().slice(-1)[0];
+
+  (async function () {
+    try {
+      for (let i = 0; i < 60 && !d.querySelector('.res-card'); i++) await wait(200);
+      const res = w.RP.resources.byId('changan-yeweiyang');
+      const list = res.beats || [];
+      P('本子 ' + res.name + '，作者写的节点卡 ' + list.length + ' 张：' +
+        list.map(function (b) { return 'at=' + b.at + (b.key ? '(key)' : ''); }).join(' / '));
+      const maxAt = list.reduce(function (m, b) { return Math.max(m, b.at); }, 0);
+      const thr = list.map(function (b) { return Math.round(b.at / maxAt * 85); });
+      P('按 85% 等比映射的阈值：' + thr.join(' / ') + '（写死回合数时是 ' + list.map(function (b) { return b.at; }).join(' / ') + '）');
+      P('');
+
+      w.RP.app.play(res.id);
+      await wait(700);
+      const restore = installFake();
+      const conv = w.RP.store.active();
+      async function turn(prog, label) {
+        queue = [prog];
+        const n0 = beats().length;
+        await w.RP.chat.sendMessage(conv, res, label, {});
+        return { added: beats().length - n0, beat: lastBeat(), prog: conv.progress, turn: conv.turn };
+      }
+
+      P('【① 推进度驱动：第 1 轮就给 20 点】');
+      let r = await turn(20, '我这里有半页旧卷宗的拓片。');
+      ok(r.prog === 20, '推进度落在 20%（实际 ' + r.prog + '）');
+      ok(r.added === 1, '第 1 轮就放出了第 1 张卡（不再等第 5 回合）', '放了 ' + r.added + ' 张');
+      ok(!!r.beat && r.beat.meta.early === true, '这张卡被标记为「提前触发」');
+      ok(!!r.beat && r.beat.text === list[0].text, '放出来的正是作者写的那张卡');
+
+      P('【② 原地踏步：给 0 点】');
+      r = await turn(0, '我先看看灯。');
+      ok(r.added === 0, '没有新卡（没推进就不放卡）', '放了 ' + r.added + ' 张');
+      ok(r.prog === 20, '推进度保持不变（实际 ' + r.prog + '）');
+
+      P('【③ 再推进 20 点：跨过第二个阈值 34】');
+      r = await turn(20, '灯芯上的记号我认得。');
+      ok(r.prog === 40, '推进度到 40%（实际 ' + r.prog + '）');
+      ok(r.added === 1, '第 2 张卡放出来了');
+
+      P('【④ 一大步跨三档：给 50 点】');
+      r = await turn(50, '司灯署的账册我全带来了。');
+      /* 单轮推进度上限 +45 是 acts.js 里原有的护栏（clamp(-20,45)）：模型不能一轮通关。
+         所以 40 + 50 会被截成 85 —— 这个断言就是在盯这条护栏还活着。 */
+      ok(r.prog === 85, '推进度被单轮上限截到 85%（40 + min(50, 45)；实际 ' + r.prog + '）');
+      ok(r.added === 1, '一次只放一张卡（不刷屏，剩下的下轮再放）', '放了 ' + r.added + ' 张');
+
+      P('【⑤ 不重复放】');
+      const total = beats().length;
+      r = await turn(0, '我们走吧。');
+      const again = beats().filter(function (m, i, arr) { return arr.indexOf(m) === i; }).length;
+      ok(r.added === 1, '还有一张卡欠着（阈值 68 那张在上一步被跨过），这轮补上');
+      ok(beats().length === again, '没有重复放同一张卡（' + beats().length + ' 张，去重后 ' + again + ' 张）');
+      P('');
+
+      P('【⑥ 回合兜底：模型一直不给推进度】');
+      const res2 = w.RP.resources.playable()[0];
+      w.RP.app.play(res2.id);
+      await wait(600);
+      const conv2 = w.RP.store.active();
+      const b2 = res2.beats || [];
+      let firstAt = null;
+      for (let t = 1; t <= 6; t++) {
+        queue = [0];
+        const n0 = (conv2.messages || []).filter(function (m) { return m.role === 'beat'; }).length;
+        await w.RP.chat.sendMessage(conv2, res2, '第 ' + t + ' 句。', {});
+        const n1 = (conv2.messages || []).filter(function (m) { return m.role === 'beat'; }).length;
+        if (n1 > n0 && firstAt === null) firstAt = t;
+      }
+      const firstBeatAt = b2.length ? Number(b2[0].at) : 0;
+      ok(firstAt === firstBeatAt, '推进度一直是 0 时，第 ' + firstBeatAt + ' 回合兜底放第 1 张卡（实际第 ' + firstAt + ' 回合）');
+
+      P('【⑦ key 卡的阈值要落在通关阈值之前】');
+      const allRes = (typeof w.RP.resources.list === 'function') ? w.RP.resources.list() : (w.RP.resources.list || []);
+      const withKey = allRes.filter(function (r) { return (r.beats || []).some(function (b) { return b.key; }); });
+      P('      带 key 卡的本子：' + withKey.map(function (r) { return r.name; }).join('、'));
+      withKey.slice(0, 5).forEach(function (r) {
+        const bs = r.beats || [];
+        const mx = bs.reduce(function (m, b) { return Math.max(m, Number(b.at) || 0); }, 0) || 1;
+        const ki = bs.map(function (b) { return !!b.key; }).indexOf(true);
+        const kthr = Math.round(bs[ki].at / mx * 85);
+        const winAt = (w.RP.settings.get().score || {}).winAt || 95;
+        ok(kthr < winAt, r.name + ' 的 key 卡阈值 ' + kthr + '% 早于通关阈值 ' + winAt + '%');
+      });
+
+      restore();
+      P('');
+      P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

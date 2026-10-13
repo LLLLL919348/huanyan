@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}
+body.shot #out{display:none}</style></head>
+<body>
+<!--
+  真机试玩：用真模型连打若干轮，逐轮记录角色台词与状态变化（状态值 / 心境 / 推进度 / 行为台词）。
+  用法：
+    powershell -File tools/run-playthrough.ps1          # 只跑并打印报告
+    powershell -File tools/run-playthrough.ps1 -Shot    # 跑完顺手截图（看界面）
+  关键点：全程只用 await（sendMessage 会等到回复落地才返回），不用定时器轮询 ——
+  无头 Edge 的 --virtual-time-budget 会快进虚拟时钟，定时器判完成会得到假结论。
+-->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+/* 报告出口：无头 Edge 的 --virtual-time-budget 会让 --dump-dom 在回复到达前就倒出 DOM，
+   所以结果同时 POST 给 tools/report-sink.js（读那边就不受 dump 时机影响）。 */
+function report() {
+  try {
+    fetch('http://127.0.0.1:5799/report', { method: 'POST', body: log.join('\n') }).catch(function () { });
+  } catch (e) { }
+}
+/* 把这一场真实会话交给收集器，截图 harness 再取回去渲染（截图页不碰网络，可以用虚拟时间） */
+function sendConv(conv) {
+  try {
+    fetch('http://127.0.0.1:5799/conv', {
+      method: 'POST',
+      body: JSON.stringify({
+        resourceId: conv.resourceId, hp: conv.hp, maxHp: conv.maxHp, affinity: conv.affinity,
+        progress: conv.progress, turn: conv.turn, warned: conv.warned, muted: !!conv.muted,
+        left: !!conv.left, paused: !!conv.paused, messages: conv.messages
+      })
+    }).catch(function () { });
+  } catch (e) { }
+}
+const SHOT = new URLSearchParams(location.search).get('shot') === '1';
+if (SHOT) document.body.classList.add('shot');
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  /* 玩家台词：前几轮正常推进，中间故意越界，看角色会不会用行为台词惩戒，最后收束 */
+  const LINES = [
+    '下官大理寺新任评事，今夜来灯市只为了一桩旧案。这卷宗缺了第十页，想请你过目。',
+    '那第十页上写的是谁的名字？',
+    '你当年也在场吧？我那位死在雨夜的同僚，是不是替你去死的？',
+    '……是我失言了。我们换个话题，灯芯上那道记号是什么意思？',
+    '司灯署为什么接连灭灯？是有人在做手脚吗？',
+    '你这个掌灯人当得真是废物，连盏灯都看不住。',
+    '抱歉，方才是我急了。你只告诉我，那页卷宗现在在谁手上？',
+    '逼你承认自己就是当年被写成已殁的活口，有意思吗？',
+    '三更改市之前，我需要一个能写进案卷的答案。',
+    '今夜就到这儿。最后一句：你希望我查下去吗？'
+  ];
+  const N = Number(new URLSearchParams(location.search).get('n') || LINES.length);
+
+  (async function () {
+    try {
+      for (let i = 0; i < 60 && !d.querySelector('.res-card'); i++) await wait(200);
+      const res = w.RP.resources.byId('changan-yeweiyang') || w.RP.resources.playable()[0];
+      w.RP.app.play(res.id);
+      await wait(600);
+      const conv = w.RP.store.active();
+      P('本子：' + res.name + '   模型模式：' + w.RP.api.mode() + '（server = 用你们配的本站模型）');
+      P('');
+      P('轮次 | 状态值 | 心境   | 推进度 | 越界计数 | 本轮角色台词（截断）');
+
+      for (let i = 0; i < N; i++) {
+        const before = { hp: conv.hp, prog: conv.progress, aff: conv.affinity };
+        const line = LINES[i % LINES.length];
+        await w.RP.chat.sendMessage(conv, res, line, {});       // 等到回复落地才返回
+        const ais = conv.messages.filter(function (m) { return m.role === 'ai' && m.text; });
+        const last = ais[ais.length - 1];
+        const txt = last ? String(last.text).replace(/\s+/g, ' ') : '（无回复）';
+        const acts = (txt.match(/_〔[^〕]*〕/g) || []).join(' ');
+        const dHp = conv.hp - before.hp, dProg = conv.progress - before.prog, dAff = conv.affinity - before.aff;
+        P(String(i + 1).padStart(3) + '  |  ' + String(conv.hp).padStart(4) + '  | ' +
+          String(w.RP.chat.moodOf(conv.affinity).name).padEnd(6) + ' | ' +
+          String(conv.progress + '%').padStart(5) + '  | ' + String(conv.warned || 0).padStart(6) + '   | ' +
+          txt.slice(0, 46) + (acts ? '   ← 行为台词 ' + acts : '') +
+          '   [' + (dHp ? '血 ' + dHp : '血 0') + ' / ' + (dProg ? '进度 +' + dProg : '进度 0') +
+          ' / ' + (dAff ? '好感 ' + dAff : '好感 0') + ']');
+        if (!last) { P('      !! 这一轮没有拿到回复，后面不再继续'); break; }
+        if (conv.muted || conv.paused || conv.left) { P('      （本场已结束：muted=' + !!conv.muted + ' paused=' + !!conv.paused + ' left=' + !!conv.left + '）'); break; }
+      }
+
+      P('');
+      const notices = conv.messages.filter(function (m) { return m.role === 'notice'; });
+      P('过程里的系统提示（判定降级 / 扣血作废 / 结算说明等）共 ' + notices.length + ' 条：');
+      notices.slice(-8).forEach(function (m) { P('  · ' + String(m.text).replace(/\s+/g, ' ').slice(0, 110)); });
+      P('');
+      P('最终：状态值 ' + conv.hp + '/20 · 心境 ' + w.RP.chat.moodOf(conv.affinity).name +
+        ' · 推进度 ' + conv.progress + '% · 回合 ' + conv.turn +
+        (conv.left ? ' · 角色已离去' : '') + (conv.muted ? ' · 已被处刑' : ''));
+      P('=== 完成 ===');
+
+      if (SHOT) {
+        /* 截图模式：把消息滚到底，留出时间让界面画完 */
+        const box = d.getElementById('messages');
+        if (box) box.scrollTop = box.scrollHeight;
+        await wait(600);
+      }
+      sendConv(conv);
+      await wait(500);          // 给 POST 一点时间飞出去（真实时间下无所谓，虚拟时间下也无害）
+      report();
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); report(); }
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

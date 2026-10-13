@@ -30,8 +30,13 @@ const CSP = [
 ].join('; ');
 
 /* 开发用验收页（tools/*.html）里有内联脚本，单独放宽 script-src；
-   站点本身（index.html）与后台（admin/index.html）没有任何内联脚本，保持严格策略。 */
-const CSP_RELAXED = CSP.replace("script-src 'self'", "script-src 'self' 'unsafe-inline'");
+   另外允许连一个本机端口：无头浏览器里的验收页要把结果 POST 到 tools/report-sink.js
+   （默认 127.0.0.1:5799）。否则 connect-src 'self' 会拦掉它 —— 而 --dump-dom 那条路不可靠：
+   虚拟时间会快进，DOM 往往在真模型的回复到达之前就被倒出来了（playthrough 就是这么卡住的）。
+   站点本身（index.html）与后台（admin/index.html）保持严格策略不变。 */
+const CSP_RELAXED = CSP
+  .replace("script-src 'self'", "script-src 'self' 'unsafe-inline'")
+  .replace("connect-src 'self'", "connect-src 'self' http://127.0.0.1:5799 http://localhost:5799");
 
 function applySecurityHeaders(res, opts) {
   opts = opts || {};

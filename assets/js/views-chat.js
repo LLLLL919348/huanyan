@@ -817,6 +817,15 @@ RP.chat = (function () {
     const m = Object.assign({ id: RP.util.uid('m'), ts: Date.now(), meta: {} }, msg);
     conv.messages.push(m);
     conv.updatedAt = Date.now();
+    /* 服务端统计：这个本子被进入过几次（拿不到就算了，绝不影响体验） */
+    if (msg && msg.role === 'reminder' && conv.resourceId) {
+      try {
+        fetch('/api/play', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ resourceId: conv.resourceId })
+        }).catch(function () { });
+      } catch (e) { }
+    }
     return m;                       // 返回真正存进列表的对象（流式占位要用它改文本）
   }
 

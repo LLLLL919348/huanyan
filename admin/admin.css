@@ -439,3 +439,17 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .token-box .ipt{width:100%;padding:10px 13px;border-radius:11px;border:1px solid rgba(74,62,44,.14);background:#fff;font-size:13px;outline:none}
 .token-box .ipt:focus{border-color:rgba(47,111,224,.32);box-shadow:0 0 0 3px rgba(47,111,224,.10)}
 .token-row{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}
+
+/* ---------- 访问统计（后台 → 访问统计） ---------- */
+.table-wrap{overflow-x:auto}
+.mini-table{width:100%;border-collapse:collapse;font-size:12px}
+.mini-table th,.mini-table td{padding:6px 10px;border-bottom:1px solid rgba(74,62,44,.10);text-align:left;white-space:nowrap}
+.mini-table th{color:var(--ink-3);font-weight:600;background:rgba(74,62,44,.03)}
+.mini-table tr:last-child td{border-bottom:0}
+.mini-table td:first-child{font-family:var(--mono);font-size:11.5px}
+.stats-chart{display:flex;align-items:flex-end;gap:4px;height:150px;padding:6px 2px 0;border-bottom:1px solid rgba(74,62,44,.14)}
+.stats-bar{flex:1 1 0;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%;min-width:8px}
+.stats-bar i{display:block;width:100%;max-width:26px;border-radius:4px 4px 0 0;background:linear-gradient(180deg,#4d8dff,#2f6fe0)}
+.stats-bar:hover i{background:linear-gradient(180deg,#6ea4ff,#1c56bd)}
+.stats-bar span{font-size:10px;color:var(--ink-3);margin-top:4px;font-family:var(--mono)}
+.stats-legend{margin-top:8px;font-size:11.5px;color:var(--ink-3)}

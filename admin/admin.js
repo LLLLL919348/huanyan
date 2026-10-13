@@ -1721,13 +1721,73 @@
     $$('.tab').forEach(function (t) { t.classList.toggle('is-active', t.dataset.tab === name); });
     $$('.page').forEach(function (p) { p.classList.toggle('is-active', p.id === 'page-' + name); });
     if (name === 'backup') backupTab.info();
+    if (name === 'stats') statsTab.info();
   }
+
+  /* ------------------------------ 访问统计 ------------------------------ */
+  const statsTab = (function () {
+    let days = 14;
+    function kv(rows) {
+      $('#statsKv').innerHTML = rows.map(function (r) {
+        return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(String(r[1])) + '</dd>';
+      }).join('');
+    }
+    function table(rows, head) {
+      return '<table class="mini-table"><thead><tr>' +
+        head.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') +
+        '</tr></thead><tbody>' +
+        rows.map(function (r) {
+          return '<tr>' + r.map(function (c) { return '<td>' + esc(String(c)) + '</td>'; }).join('') + '</tr>';
+        }).join('') + '</tbody></table>';
+    }
+    function info() {
+      API.get('/api/stats?days=' + days).then(function (d) {
+        const s = d.stats;
+        kv([
+          ['今日浏览量（PV）', s.today.pv],
+          ['今日访客数（UV）', s.today.uv],
+          ['昨日浏览量', s.yesterday.pv],
+          ['今日对话轮数', s.today.turns],
+          ['近 ' + days + ' 天浏览量', s.range.pv],
+          ['近 ' + days + ' 天访客（去重）', s.range.uv],
+          ['累计浏览量', s.total.pv],
+          ['累计对话轮数', s.total.turns],
+          ['开始统计于', s.firstDay]
+        ]);
+        const max = Math.max.apply(null, s.list.map(function (x) { return x.pv; }).concat([1]));
+        $('#statsChart').innerHTML = s.list.map(function (x) {
+          const pct = x.pv ? Math.max(3, Math.round(x.pv / max * 100)) : 0;
+          return '<div class="stats-bar" title="' + x.day + '：' + x.pv + ' 浏览 / ' + x.uv + ' 访客 / ' + x.turns + ' 轮对话">' +
+            '<i style="height:' + pct + '%"></i><span>' + (x.pv || '') + '</span></div>';
+        }).join('');
+        $('#statsTable').innerHTML = table(
+          s.list.slice().reverse().map(function (x) { return [x.day, x.pv, x.uv, x.turns, x.plays]; }),
+          ['日期', '浏览量', '访客', '对话轮数', '开局次数']);
+        $('#statsRes').innerHTML = s.resources.length
+          ? table(s.resources.map(function (r) { return [r.id, r.plays]; }), ['资源 id', '进入次数'])
+          : '<p class="note">还没有人进入过任何本子。</p>';
+        $('#statsHint').textContent = '近 ' + days + ' 天 · 数据文件 data/stats.json';
+      }).catch(function (e) {
+        kv([['状态', '读取失败：' + e.message]]);
+        $('#statsHint').textContent = '读取失败';
+      });
+    }
+    function init() {
+      const b7 = $('#btnStats7'), b14 = $('#btnStats14'), b30 = $('#btnStats30'), br = $('#btnStatsRefresh');
+      if (b7) b7.addEventListener('click', function () { days = 7; info(); });
+      if (b14) b14.addEventListener('click', function () { days = 14; info(); });
+      if (b30) b30.addEventListener('click', function () { days = 30; info(); });
+      if (br) br.addEventListener('click', info);
+    }
+    return { init: init, info: info };
+  })();
 
   /* ------------------------------ 启动 ------------------------------ */
   function boot() {
     resTab.init();
     setTab.init();
     backupTab.init();
+    statsTab.init();
     $('#tabs').addEventListener('click', function (e) {
       const t = e.target.closest('.tab');
       if (t) switchTab(t.dataset.tab);

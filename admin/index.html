@@ -23,6 +23,7 @@
     <button class="tab is-active" data-tab="resources">资源编辑</button>
     <button class="tab" data-tab="settings">全局设置</button>
     <button class="tab" data-tab="backup">数据备份</button>
+    <button class="tab" data-tab="stats">访问统计</button>
   </nav>
 
   <div class="topbar-right">
@@ -241,6 +242,45 @@
         <legend>导入备份</legend>
         <p class="note warn">调用 <code>POST /api/import</code>，会<b>整体覆盖</b>现有资源与设置，操作不可撤销，需要二次确认。</p>
         <button class="btn btn-danger" id="btnImport2">选择备份文件并导入</button>
+      </fieldset>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 访问统计 ============================ -->
+<section class="page" id="page-stats">
+  <div class="actionbar actionbar-slim">
+    <div class="actionbar-info"><strong>访问统计</strong><span class="hint" id="statsHint">读取中…</span></div>
+    <div class="actionbar-btns">
+      <button class="btn btn-sm" id="btnStats7">近 7 天</button>
+      <button class="btn btn-sm" id="btnStats14">近 14 天</button>
+      <button class="btn btn-sm" id="btnStats30">近 30 天</button>
+      <button class="btn btn-sm btn-primary" id="btnStatsRefresh">刷新</button>
+    </div>
+  </div>
+
+  <div class="form-scroll">
+    <div class="pad">
+      <fieldset class="card">
+        <legend>概览</legend>
+        <div class="kv" id="statsKv"></div>
+      </fieldset>
+      <fieldset class="card">
+        <legend>每日浏览量</legend>
+        <div class="stats-chart" id="statsChart"></div>
+        <div class="stats-legend">柱高按所选区间最大值等比；柱下数字为当日浏览量，悬停可看当日访客数。</div>
+      </fieldset>
+      <fieldset class="card">
+        <legend>每日明细</legend>
+        <div class="table-wrap" id="statsTable"></div>
+      </fieldset>
+      <fieldset class="card">
+        <legend>各本子进入次数</legend>
+        <div class="table-wrap" id="statsRes"></div>
+      </fieldset>
+      <fieldset class="card">
+        <legend>关于这份统计</legend>
+        <p class="note">只记数量，不记 IP、不记 User-Agent、不记对话内容。访客去重用的是「匿名 cookie + 当日盐」的哈希，换日即失效，无法跨天追踪同一个人。数据存在 <code>data/stats.json</code>，保留 120 天。</p>
       </fieldset>
     </div>
   </div>

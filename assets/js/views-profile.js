@@ -226,9 +226,7 @@ RP.profile = (function () {
           '<div style="margin-top:16px"><div class="acc-titles" style="margin-bottom:10px"><span class="t">数据管理</span>' +
           '<span class="s">会话数据仅存于本机浏览器 localStorage；资源与提示词由后端 data/ 管理</span></div>' +
           '<div style="display:flex;gap:10px;flex-wrap:wrap">' +
-            (RP.data.isBackend()
-              ? '<button class="btn sm primary" id="pfAdmin">打开后台管理（编辑提示词 / 人设 / 封面）</button>'
-              : '<button class="btn sm" id="pfAdminInfo">后端未连接 · 点此查看如何开启后台</button>') +
+            /* 公布版：前端不留任何通往内容后台的入口（后台只允许本机 / SSH 隧道访问，见 README「公布前清单」） */
             '<button class="btn sm" id="pfExport">导出数据 JSON</button>' +
             '<button class="btn sm danger" id="pfWipe">清空全部本地数据</button>' +
           '</div>' +
@@ -431,14 +429,6 @@ RP.profile = (function () {
         st.user.quota.used = 0; st.user.quota.day = RP.util.dayKey();
         RP.store.save(); render(); RP.app.paintQuota();
         RP.app.toast('演示额度已重置', 'ok');
-        return;
-      }
-      if (t.closest('#pfAdmin')) {
-        RP.app.openAdmin();
-        return;
-      }
-      if (t.closest('#pfAdminInfo')) {
-        RP.app.openAdmin();
         return;
       }
       if (t.closest('#pfExport')) {

@@ -1,4 +1,7 @@
 {
+  "admin": {
+    "allowIps": []
+  },
   "site": {
     "name": "幻言",
     "tagline": "AI 角色扮演 · 陪聊",

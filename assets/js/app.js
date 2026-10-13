@@ -40,34 +40,8 @@ RP.app = (function () {
     }
   };
 
-  /* 打开内容后台：只有走 http 且后端在跑时才真能打开 */
-  function adminUrl() {
-    return (location.protocol === 'http:' || location.protocol === 'https:')
-      ? location.origin + '/admin' : null;
-  }
-  function paintAdminDot() {
-    const dot = document.getElementById('adminDot');
-    const btn = document.getElementById('btnAdmin');
-    if (!dot || !btn) return;
-    const on = backend && !!adminUrl();
-    dot.classList.toggle('on', on);
-    btn.title = on ? '内容后台（已连接后端）' : '内容后台（后端未连接，点击查看如何开启）';
-  }
-  function openAdmin() {
-    const url = adminUrl();
-    if (url && backend) { window.open(url, '_blank'); return; }
-    modal({
-      title: '打开内容后台',
-      body: '资源的提示词、剧情文案、封面图，以及会话助手的人设提示词，都由后端管理。\n\n' +
-        '① 在项目目录执行：\n   node server/server.js 5599\n' +
-        '（或直接双击 start.cmd，它会自动起服务并打开浏览器）\n\n' +
-        '② 然后打开：\n   http://127.0.0.1:5599/admin\n\n' +
-        (location.protocol === 'file:'
-          ? '当前页面是用「直接打开 index.html」的方式打开的，这种方式没有后端，所以只能读取内置资源、改不了数据。'
-          : '当前页面连不上后端接口，请确认服务已经启动。'),
-      ok: '知道了'
-    });
-  }
+  /* 内容后台不在前端留入口：公布版里后台只允许本机 / SSH 隧道访问（见 README「公布前清单」）。
+     老版本这里有一个顶栏按钮与打开后台的函数，已删除；地址只写在 README 与部署脚本里。 */
 
   /* 站点文案（站点名、页脚声明等）来自后台设置 */
   function applySiteTexts() {
@@ -413,7 +387,6 @@ RP.app = (function () {
       if (RP.store.get().ui.view !== 'chat') { setView('chat'); }
       toggleFocus();
     });
-    document.getElementById('btnAdmin').addEventListener('click', openAdmin);
     const sbBtn = document.getElementById('btnSidebar');
     if (sbBtn) sbBtn.addEventListener('click', function () {
       document.getElementById('sidebar').classList.toggle('open');
@@ -494,13 +467,12 @@ RP.app = (function () {
     applySiteTexts();
     paintQuota();
     init();
-    paintAdminDot();
     if (backend) {
       const si = RP.api.serverInfo();
       if (si.serverModel) {
         toast('已连接后端 · 模型由本站提供（<b>' + RP.util.esc(si.model) + '</b>，每日 ' + si.dailyQuota + ' 次）', 'ok');
       } else {
-        toast('已连接后端 · 顶栏「内容后台」可编辑提示词与人设', 'ok');
+        toast('已连接后端 · 内容由服务端管理', 'ok');
       }
     }
   }
@@ -510,7 +482,6 @@ RP.app = (function () {
     popover: popover, closePopover: closePopover, applyAppearance: applyAppearance,
     paintQuota: paintQuota, paintNavDot: paintNavDot, applySiteTexts: applySiteTexts,
     themeMode: themeMode, isLight: isLight, toggleMode: toggleMode,
-    openAdmin: openAdmin, adminUrl: adminUrl, paintAdminDot: paintAdminDot,
     toggleFocus: toggleFocus, setFocus: setFocus, focusOn: focusOn, paintFocus: paintFocus, applyFont: applyFont,
     checkBuildNow: function () { return checkBuild(false); }, buildId: function () { return buildId; },
     FONT_SIZES: FONT_SIZES, FONT_FAMILIES: FONT_FAMILIES

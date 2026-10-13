@@ -19,6 +19,7 @@ const vm = require('vm');
 const crypto = require('crypto');
 const sec = require('./security');
 const promptBuilder = require('./prompt');
+const stats = require('./stats');
 
 /* ------------------------------ 路径与常量 ------------------------------ */
 const ROOT = path.resolve(__dirname, '..');            // 项目根目录
@@ -694,6 +695,33 @@ async function handleApi(req, res, pathname) {
   /* 构建版本：取前端资源里最新的修改时间。
      页面会定时比对这个值 —— 代码更新后，已经打开的旧页面会自己提示「点此刷新」，
      免得测试时一直在跑内存里的旧 JS（这个坑踩过：明明修好了，页面上还是旧行为）。 */
+  /* 前端开局时打一个轻量 beacon：记「这个本子被进入过几次」（公开接口，只收一个本子 id） */
+  if (pathname === '/api/play' && method === 'POST') {
+    try {
+      const raw = (await readBody(req)).toString('utf8');
+      const j = JSON.parse(raw || '{}');
+      stats.play(String(j.resourceId || ''));
+    } catch (e) { /* 记不上就算了，绝不影响前台 */ }
+    return ok(res, { ok: true });
+  }
+
+  /* 站点统计（浏览量 / 独立访客 / 本子进入次数 / 对话轮数）——只在管理面可见 */
+  if (pathname === '/api/stats' && method === 'GET') {
+    const qi = req.url.indexOf('?');
+    const q = qi === -1 ? '' : req.url.slice(qi + 1);
+    if (!sec.adminReachable(req, settings || {})) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end('404 Not Found');
+      logLine(method, pathname, '404 统计接口不可达（来源 IP 不在白名单）');
+      return;
+    }
+    if (!sec.adminAllowed(req, process.env.ADMIN_TOKEN || '', q)) {
+      return fail(res, 403, '需要管理令牌（请求头 x-admin-token）', method, pathname);
+    }
+    const m = /(?:^|&)days=(\d+)/.exec(q);
+    return ok(res, { stats: stats.snapshot(m ? Number(m[1]) : 14) });
+  }
+
   if (pathname === '/api/version' && method === 'GET') {
     const dirs = [path.join(ROOT, 'assets', 'js'), path.join(ROOT, 'assets', 'css')];
     let newest = 0, count = 0;
@@ -873,6 +901,7 @@ async function handleApi(req, res, pathname) {
           send({ error: '模型返回为空' });
           return res.end();
         }
+        try { stats.turn(); } catch (e) { }
         send({ done: true, text: full, quota: sec.quotaOf(vid) });
         return res.end();
       } catch (e) {
@@ -903,6 +932,7 @@ async function handleApi(req, res, pathname) {
       const data = await r.json();
       const text = data && data.choices && data.choices[0] && data.choices[0].message ? String(data.choices[0].message.content || '') : '';
       if (!text.trim()) { if (spend) sec.refundQuota(vid); return fail(res, 502, '模型返回为空', method, pathname); }
+      try { stats.turn(); } catch (e) { }
       return ok(res, { ok: true, text: text, quota: sec.quotaOf(vid) });
     } catch (e) {
       clearTimeout(timer);
@@ -1008,14 +1038,41 @@ const server = http.createServer(function (req, res) {
     return fail(res, 429, '请求过于频繁，请 ' + rl.retryAfter + ' 秒后再试', req.method, pathname);
   }
 
-  /* 0.1) 管理面：写接口与 /admin 需要令牌（未配置令牌时只允许本机） */
+  /* 0.1) 管理面有两道门，缺一不可：
+         ① 能不能访问到：只允许本机（含 SSH 隧道）或 settings.admin.allowIps 白名单；不在名单里直接 404，
+            连"这里有个后台"都不暴露；
+         ② 有没有令牌：写接口、敏感 GET 与后台页面都需要 x-admin-token（或 ?token=）。
+         未配令牌时第①道仍然拦着 —— 公网上没有令牌就进不来。 */
   const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
   const isWriteApi = pathname.indexOf('/api/') === 0 && ['POST', 'PUT', 'DELETE', 'PATCH'].indexOf(req.method) !== -1;
-  const isSensitiveGet = (pathname === '/api/export' || pathname === '/api/import');   // 全量导出同样是敏感操作
+  const isSensitiveGet = (pathname === '/api/export' || pathname === '/api/import' || pathname === '/api/stats');
+  /* 前台正常会用的 POST：对话与开局打点 —— 这两个不吃管理令牌（否则访客的统计与对话全废） */
+  const PUBLIC_POSTS = ['/api/chat', '/api/play'];
   const isAdminPage = pathname === '/admin' || pathname === '/admin/' || pathname === '/admin/index.html';
   const isAdminAsset = pathname === '/admin/admin.css' || pathname === '/admin/admin.js';
-  if (((isWriteApi || isSensitiveGet) && pathname !== '/api/chat') || isAdminPage) {
+  const settingsNow = settings || {};             // 启动时已载入；两道门共用
+  if (isAdminPage || isAdminAsset) {
+    if (!sec.adminReachable(req, settingsNow)) {
+      /* 不在名单里：直接把后台当作"这个路径不存在" —— 返回 403 等于告诉对方"这里有后台"。
+         这条也会进访问日志，方便日后回看有没有人在扫后台。 */
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end('404 Not Found');
+      logLine(req.method, pathname, '404 后台不可达（来源 IP 不在白名单）');
+      return;
+    }
     if (!isAdminAsset && !sec.adminAllowed(req, ADMIN_TOKEN, rawQuery)) {
+      return fail(res, 403, '需要管理令牌（请求头 x-admin-token）', req.method, pathname);
+    }
+  }
+  if (((isWriteApi || isSensitiveGet) && PUBLIC_POSTS.indexOf(pathname) === -1)) {
+    /* 只在管理面存在的 GET（导出 / 导入 / 统计）：不可达时直接当作路径不存在 */
+    if (isSensitiveGet && !sec.adminReachable(req, settingsNow)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+      res.end('404 Not Found');
+      logLine(req.method, pathname, '404 管理接口不可达（来源 IP 不在白名单）');
+      return;
+    }
+    if (!sec.adminAllowed(req, ADMIN_TOKEN, rawQuery)) {
       return fail(res, 403, '需要管理令牌（请求头 x-admin-token）', req.method, pathname);
     }
   }
@@ -1038,6 +1095,9 @@ const server = http.createServer(function (req, res) {
     return serveStatic(req, res, pathname);
   }
   if (pathname === '/' || pathname === '/index.html') {
+    /* 记一次浏览量：放在服务端返回首页时，不依赖前端 JS（广告拦截器挡不掉）。
+       访客 id 用匿名 cookie（既有机制），只参与当日去重，不落原始值。 */
+    try { stats.pageView(sec.visitorId(req, res)); } catch (e) { /* 统计失败不影响页面 */ }
     return serveStatic(req, res, '/index.html');
   }
 

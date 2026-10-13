@@ -106,6 +106,19 @@ function safeEqual(a, b) {
   if (A.length !== B.length) return false;
   return crypto.timingSafeEqual(A, B);
 }
+/* 后台「能不能被访问到」与「有没有令牌」是两件事，必须同时成立。
+   ★ 公布版的关键：后台只允许 本机（含 SSH 隧道，源地址就是回环）或 settings.admin.allowIps 里列的 IP。
+     仅凭令牌不再足以从公网打开后台 —— 令牌万一泄露，也不至于让人直接进后台。
+   默认 allowIps 为空 = 只有本机/隧道能进。 */
+function adminReachable(req, settings) {
+  if (isLocal(req)) return true;
+  const list = (settings && settings.admin && Array.isArray(settings.admin.allowIps))
+    ? settings.admin.allowIps : [];
+  if (!list.length) return false;
+  const ip = clientIp(req);
+  return list.some(function (x) { return String(x).trim() === ip; });
+}
+
 /* 管理令牌：请求头 x-admin-token 或 Authorization: Bearer；
    也接受 /admin?token=xxx 这种一次性入口（仅用于打开后台页面，之后由前端存进 sessionStorage）。
    未配置令牌时只允许本机。 */
@@ -283,6 +296,7 @@ module.exports = {
   isLocal: isLocal,
   visitorId: visitorId,
   adminAllowed: adminAllowed,
+  adminReachable: adminReachable,
   readModelConfig: readModelConfig,
   modelReady: modelReady,
   publicModelInfo: publicModelInfo,

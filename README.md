@@ -464,7 +464,7 @@ node server/server.js 5599
 
 ## 备份到 GitHub
 
-站点内容已备份到 **https://github.com/LLLLL919348/huanyan**。远端历史三层：`Initial commit`（建仓时的占位 README）→ 站点内容快照 → 免费额度面板；快照与本地提交的 **tree 哈希完全一致**，即 72 个文件逐字节相同。
+站点内容已备份到 **https://github.com/LLLLL919348/huanyan**（**私有仓库**：只有账号本人能看，匿名访问 GitHub 接口返回 404，已实测确认）。远端历史：`Initial commit`（建仓时的占位 README）→ 站点内容快照 → 免费额度面板 → 备份脚本与说明；快照与本地提交的 **tree 哈希完全一致**，即 73 个文件逐字节相同。
 
 ### 再推一次备份
 

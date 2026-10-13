@@ -269,6 +269,33 @@ RP.profile = (function () {
     return { badge: '还没有模型', cls: 'warn', model: '—', base: '', note: '没有模型就不开放对话：角色台词一律由大模型现场演绎，不用脚本凑' };
   }
 
+  /* 免费额度清单：都是模型厂商的官方接口。不做「免费无限」这类承诺，也不承诺数字。 */
+  function freeTierPanel() {
+    const list = RP.api.FREE_TIERS || [];
+    if (!list.length) return '';
+    return '<details class="free-tier">' +
+      '<summary>不想花钱也能用云端大模型：' + list.length + ' 家官方免费额度（点开看怎么领）</summary>' +
+      '<div class="ft-note">下面全是模型厂商自己的官方接口 —— 对话只发给模型厂商本人，不经过任何第三方中转。' +
+      '免费范围各家随时会调整，以官网当期政策为准；本机 ollama 那条则永远是 0 成本。</div>' +
+      list.map(function (t, i) {
+        return '<div class="ft-row">' +
+          '<div class="ft-head"><b>' + RP.util.esc(t.name) + '</b>' +
+            '<span class="ft-net">' + RP.util.esc(t.net) + '</span>' +
+            '<button class="btn sm" data-ft="' + i + '">填这一家</button></div>' +
+          '<div class="ft-why">' + RP.util.esc(t.why) + '</div>' +
+          '<div class="ft-kv"><span>地址</span><code>' + RP.util.esc(t.base) + '</code></div>' +
+          '<div class="ft-kv"><span>模型名</span><code>' + (t.model
+            ? RP.util.esc(t.model)
+            : '去官网模型列表筛「:free」，把挑中的名字填进下面的模型框') + '</code></div>' +
+          '<div class="ft-kv"><span>怎么领</span><span>' + RP.util.esc(t.get) +
+            '（<a href="' + RP.util.esc(t.home) + '" target="_blank" rel="noopener">打开官网</a>）</span></div>' +
+        '</div>';
+      }).join('') +
+      '<div class="ft-warn">别用来路不明的「免费无限」中转：对话内容会经过陌生服务器，还随时可能断。' +
+      '上面这几家官方额度 + 本机 ollama，已经够一个角色扮演站点用。</div>' +
+    '</details>';
+  }
+
   function apiPanel() {
     const a = RP.store.get().api;
     const si = RP.api.serverInfo();
@@ -290,6 +317,7 @@ RP.profile = (function () {
           '<li>点「测试连接」拉到模型列表 → 点「保存并启用」→ 立刻生效，之后每轮回复下方会标出耗时</li>' +
         '</ol>' +
       '</div>' +
+      freeTierPanel() +
       '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 12px">' +
         '<button class="btn sm" id="apiScan">扫描本机模型服务（Ollama / LM Studio）</button>' +
         '<span class="tip" style="align-self:center">本机模型免费、离线可用，代价是慢（CPU 推理）</span>' +
@@ -549,6 +577,25 @@ RP.profile = (function () {
       const tip = view.querySelector('#apiPresetTip');
       if (tip) tip.innerHTML = RP.util.esc(p.name) + '：' + RP.util.esc(p.note || '') + '（还需要填你自己的 API Key）';
       view.querySelector('#apiKey').focus();
+    });
+    /* 「填这一家」：按免费额度清单把地址/模型名填好，顺便把供应商下拉同步过去 */
+    Array.prototype.forEach.call(view.querySelectorAll('[data-ft]'), function (b) {
+      b.addEventListener('click', function () {
+        const t = (RP.api.FREE_TIERS || [])[+b.getAttribute('data-ft')];
+        if (!t) return;
+        const baseEl = view.querySelector('#apiBase');
+        const modelEl = view.querySelector('#apiModel');
+        const presetEl = view.querySelector('#apiPreset');
+        if (baseEl) baseEl.value = t.base;
+        if (modelEl && t.model) modelEl.value = t.model;
+        if (presetEl) presetEl.value = t.id;
+        const tip = view.querySelector('#apiPresetTip');
+        if (tip) tip.innerHTML = '已填好 <b>' + RP.util.esc(t.name) + '</b> 的地址' + (t.model ? '与模型名' : '') +
+          '。还差一步：' + RP.util.esc(t.get) + '，把 Key 粘到下面的框里。';
+        RP.app.toast('已填好「' + t.name + '」的地址，去官网领个 Key 粘进来就行', 'ok');
+        const keyEl = view.querySelector('#apiKey');
+        if (keyEl) { keyEl.focus(); keyEl.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+      });
     });
   }
 

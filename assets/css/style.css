@@ -884,6 +884,24 @@ body[data-mode="light"] .model-warn{border-color:rgba(181,114,15,.3);background:
 .api-quick .aq-title{font-size:12.5px;color:var(--text);margin-bottom:7px;line-height:1.6;}
 .api-quick .aq-steps{margin:0;padding-left:19px;font-size:11.5px;color:var(--text-2);line-height:1.85;}
 .api-quick .aq-steps b{color:var(--accent-2);}
+/* 免费额度清单（我的 → 模型） */
+.free-tier{margin:0 0 12px;padding:10px 14px;border-radius:var(--radius-sm);border:1px solid var(--line);background:var(--panel);}
+.free-tier > summary{cursor:pointer;font-size:12.5px;color:var(--accent-2);letter-spacing:.03em;list-style:none;display:flex;align-items:center;gap:7px;}
+.free-tier > summary::-webkit-details-marker{display:none;}
+.free-tier > summary::before{content:'\25B8';color:var(--text-3);display:inline-block;transition:transform .18s ease;}
+.free-tier[open] > summary::before{transform:rotate(90deg);}
+.free-tier .ft-note{font-size:11.5px;color:var(--text-3);line-height:1.7;margin:10px 0 6px;}
+.free-tier .ft-row{padding:10px 0;border-top:1px dashed var(--line);}
+.free-tier .ft-head{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:5px;}
+.free-tier .ft-head b{font-size:12.5px;color:var(--text);letter-spacing:.03em;}
+.free-tier .ft-net{font-size:10.5px;color:var(--text-3);border:1px solid var(--line);padding:1px 7px;border-radius:999px;}
+.free-tier .ft-head .btn{margin-left:auto;}
+.free-tier .ft-why{font-size:11.5px;color:var(--text-2);line-height:1.7;margin-bottom:6px;}
+.free-tier .ft-kv{display:flex;gap:8px;font-size:11px;line-height:1.85;color:var(--text-3);}
+.free-tier .ft-kv > span:first-child{flex:0 0 48px;color:var(--text-3);}
+.free-tier .ft-kv code{font-family:ui-monospace,Consolas,'Cascadia Mono',monospace;color:var(--accent-2);word-break:break-all;}
+.free-tier .ft-kv a{color:var(--accent-2);}
+.free-tier .ft-warn{margin-top:10px;padding:8px 11px;border-radius:var(--radius-sm);border:1px dashed rgba(255,185,88,.4);background:rgba(255,185,88,.07);font-size:11px;color:var(--text-2);line-height:1.7;}
 /* 字号与字体面板 */
 .font-panel{display:flex;flex-direction:column;gap:18px;}
 .font-block{display:flex;flex-direction:column;gap:9px;}

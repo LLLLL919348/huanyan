@@ -43,8 +43,9 @@ RP.api = (function () {
   const PROVIDERS = [
     { id: 'deepseek', name: 'DeepSeek 深度求索', base: 'https://api.deepseek.com/v1', model: 'deepseek-chat', note: '中文写作性价比高' },
     { id: 'moonshot', name: 'Moonshot Kimi', base: 'https://api.moonshot.cn/v1', model: 'moonshot-v1-8k', note: '长上下文，中文语感好' },
-    { id: 'zhipu', name: '智谱 GLM', base: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash', note: '有免费额度' },
+    { id: 'zhipu', name: '智谱 GLM', base: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash', note: 'glm-4-flash 免费档' },
     { id: 'dashscope', name: '通义千问（兼容模式）', base: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-plus', note: '阿里云，兼容 OpenAI 协议' },
+    { id: 'modelscope', name: '魔搭 ModelScope', base: 'https://api-inference.modelscope.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct', note: '每日免费调用次数' },
     { id: 'siliconflow', name: 'SiliconFlow 硅基流动', base: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct', note: '聚合多家开源模型' },
     { id: 'openrouter', name: 'OpenRouter', base: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini', note: '一个 key 用多家模型' },
     { id: 'ark', name: '火山方舟（豆包）', base: 'https://ark.cn-beijing.volces.com/api/v3', model: '', note: '模型名填你的推理接入点 ID' },
@@ -52,6 +53,34 @@ RP.api = (function () {
     { id: 'ollama', name: 'Ollama（本机免费）', base: 'http://127.0.0.1:11434/v1', model: 'qwen2.5', note: '跑在你自己电脑上，不要钱' },
     { id: 'lmstudio', name: 'LM Studio（本机）', base: 'http://127.0.0.1:1234/v1', model: '', note: '本机图形界面加载模型' },
     { id: 'custom', name: '自定义 / 其它兼容接口', base: '', model: '', note: '任何 OpenAI 兼容的 /chat/completions' }
+  ];
+  /* 正规免费额度渠道：都是模型厂商自己的官方接口，不是第三方中转。
+     免费模型与额度各家会调整，以官网当期政策为准 —— 因此这里只写地址和领取路径，不承诺数字。 */
+  const FREE_TIERS = [
+    {
+      id: 'modelscope', name: '魔搭 ModelScope', home: 'https://modelscope.cn', net: '国内直连',
+      base: 'https://api-inference.modelscope.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct',
+      get: '注册（用阿里云账号）→ 进「API-Inference」页面领取访问令牌',
+      why: '阿里官方社区，每天有一定免费调用次数，7B 级小模型跑角色扮演够用，延迟比本机 CPU 快很多'
+    },
+    {
+      id: 'zhipu', name: '智谱 GLM', home: 'https://open.bigmodel.cn', net: '国内直连',
+      base: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4-flash',
+      get: '注册 → 控制台「API Keys」新建一个',
+      why: 'glm-4-flash 是官方长期免费的轻量档，中文语感好、出字快，适合当默认模型'
+    },
+    {
+      id: 'siliconflow', name: 'SiliconFlow 硅基流动', home: 'https://cloud.siliconflow.cn', net: '国内直连',
+      base: 'https://api.siliconflow.cn/v1', model: 'Qwen/Qwen2.5-7B-Instruct',
+      get: '注册 → 完成实名 → 在「API 密钥」新建',
+      why: '聚合多家开源模型，部分小模型长期免费；同一家可以换不同模型试手感'
+    },
+    {
+      id: 'openrouter', name: 'OpenRouter', home: 'https://openrouter.ai', net: '需要能直连国外网络',
+      base: 'https://openrouter.ai/api/v1', model: '',
+      get: '用 Google 或 GitHub 账号登录 → 「Keys」页创建',
+      why: '一个 Key 能用很多家模型；在官网模型列表里筛「:free」的那些不收费，但有每日次数上限'
+    }
   ];
   function ownReady() {
     const a = localCfg();
@@ -521,6 +550,6 @@ RP.api = (function () {
     parseState: parseState,
     testConnection: testConnection, sanitize: sanitize, globalRules: globalRules,
     loadServerModel: loadServerModel, loadQuota: loadQuota, serverReady: serverReady, serverInfo: serverInfo,
-    mode: mode, ownReady: ownReady, PROVIDERS: PROVIDERS
+    mode: mode, ownReady: ownReady, PROVIDERS: PROVIDERS, FREE_TIERS: FREE_TIERS
   };
 })();

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!-- 免费额度清单：数据完整性 + 「填这一家」按钮是否真的把地址/模型名填进输入框 -->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+let fails = 0;
+function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  w.addEventListener('error', function (e) { log.push('!! error: ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); fails++; });
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  (async function () {
+    try {
+      for (let i = 0; i < 60 && !d.querySelector('.res-card'); i++) await wait(200);
+
+      P('【数据】');
+      const tiers = w.RP.api.FREE_TIERS || [];
+      ok(tiers.length === 4, '免费额度清单有 4 家（实际 ' + tiers.length + '）');
+      const ids = tiers.map(t => t.id);
+      ['modelscope', 'zhipu', 'siliconflow', 'openrouter'].forEach(function (id) {
+        ok(ids.indexOf(id) > -1, '清单里有 ' + id);
+      });
+      ok(tiers.every(t => t.base && /^https:\/\//.test(t.base)), '每家的地址都是 https 直连地址');
+      ok(tiers.every(t => t.home && t.get && t.why), '每家都写了官网、领取路径和理由');
+      ok(!tiers.some(t => /\d+\s*(次|条|万|token)/i.test(t.why + t.get)), '文案里没有承诺具体免费次数/额度');
+
+      P('【预设】');
+      const prov = w.RP.api.PROVIDERS || [];
+      ok(prov.some(p => p.id === 'modelscope'), '供应商下拉里新增了魔搭 ModelScope');
+      const ms = prov.filter(p => p.id === 'modelscope')[0];
+      ok(ms && ms.base === 'https://api-inference.modelscope.cn/v1', '魔搭地址正确',
+        ms ? ms.base : '无');
+      tiers.forEach(function (t) {
+        ok(prov.some(p => p.id === t.id), '「填这一家」的 id 在供应商预设里存在：' + t.id);
+      });
+
+      P('【界面】');
+      const st = w.RP.store.get();
+      st.ui.view = 'profile';
+      Object.keys(st.ui.openAcc).forEach(function (k) { st.ui.openAcc[k] = (k === 'sys'); });
+      w.RP.store.save();
+      w.RP.app.setView('profile');
+      for (let i = 0; i < 30 && !d.querySelector('#apiBase'); i++) await wait(200);
+
+      const box = d.querySelector('.free-tier');
+      ok(!!box, '「我的 → 模型」里出现了免费额度面板');
+      if (box) {
+        ok(box.tagName === 'DETAILS', '面板是可折叠的 details');
+        const rows = box.querySelectorAll('.ft-row');
+        ok(rows.length === 4, '面板里有 4 家（实际 ' + rows.length + '）');
+        ok(/官方/.test(box.querySelector('summary').textContent), '标题里说明了是官方额度');
+        const warn = box.querySelector('.ft-warn');
+        ok(!!warn && /中转/.test(warn.textContent), '有「别用来路不明的免费无限中转」的提醒');
+        ok(box.querySelectorAll('a[target="_blank"]').length === 4, '每家都有可点开的官网链接');
+      }
+
+      P('【按钮行为】');
+      const btn = d.querySelector('[data-ft="0"]');
+      ok(!!btn, '魔搭那一行有「填这一家」按钮');
+      if (btn && box) {
+        box.open = true;
+        btn.click();
+        await wait(200);
+        const base = d.getElementById('apiBase').value;
+        const model = d.getElementById('apiModel').value;
+        const preset = d.getElementById('apiPreset').value;
+        const tip = d.getElementById('apiPresetTip').textContent;
+        ok(base === 'https://api-inference.modelscope.cn/v1', '点击后填好了地址', base);
+        ok(model === 'Qwen/Qwen2.5-7B-Instruct', '点击后填好了模型名', model);
+        ok(preset === 'modelscope', '供应商下拉同步选中魔搭', preset);
+        ok(/魔搭/.test(tip) && /Key/.test(tip), '提示文案告诉用户还差一个 Key', tip.slice(0, 60));
+
+        const orBtn = d.querySelector('[data-ft="3"]');
+        orBtn.click();
+        await wait(200);
+        ok(d.getElementById('apiBase').value === 'https://openrouter.ai/api/v1', 'OpenRouter 的地址也能填',
+          d.getElementById('apiBase').value);
+        ok(d.getElementById('apiModel').value === 'Qwen/Qwen2.5-7B-Instruct',
+          'OpenRouter 没有模型名时不乱改已有模型名（保留上一家）', d.getElementById('apiModel').value);
+      }
+
+      P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

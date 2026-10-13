@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!--
+  真机观察（不是把关测试）：不做任何 stub，让站点用真实模型跑一轮，打印来源/回复/通知。
+  ★ 为什么不判 PASS/FAIL：无头 Edge 的 --virtual-time-budget 对「长达十几秒的流式响应」
+    不可靠 —— 虚拟时间会把页面里的定时器瞬间跑完，DOM 可能在流还没结束时就 dump 出来，
+    于是「有没有等到字」变成了碰运气。真正的把关放在这两处：
+      · tools/check-stream-server.js  真模型 + 真实时间，量首字延迟与是否完整收尾（权威）
+      · tools/smoke-stream.html       客户端流式管线（确定性假流，逐条断言）
+    本文件只如实报告它看到的东西，供人工确认「模型确实在主导对话」。
+-->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; const P = s => log.push(s);
+let fails = 0;
+function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  w.addEventListener('error', function (e) { log.push('!! error: ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); });
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const conv = () => w.RP.store.active();
+  const aiMsgs = () => conv().messages.filter(m => m.role === 'ai');
+
+  (async function () {
+    const t0 = Date.now();
+    try {
+      for (let i = 0; i < 80 && !d.querySelector('.res-card'); i++) await wait(200);
+      const mode = w.RP.api.mode();
+      P('模型来源：' + mode + '（own=访客自带 / server=本站模型 / none=没有）');
+      ok(mode !== 'none', '站点有可用模型（不是 none）');
+      ok(w.RP.engine.offlineDialogue() === false, '离线脚本对话处于关闭状态（真机路径）');
+      const info = w.RP.api.serverInfo ? w.RP.api.serverInfo() : {};
+      P('服务端模型信息：' + JSON.stringify(info));
+
+      w.RP.app.play('changan-yeweiyang');
+      await wait(900);
+      ok(!!d.getElementById('chatInput'), '输入框存在（有模型才能出现）');
+      const ta = d.getElementById('chatInput');
+      const btn = d.getElementById('btnSend');
+      ok(!!ta && !!btn, '输入框与发送按钮就绪');
+      ta.value = '十年前御史台那桩灭门案，卷宗少了一页。沈明烛，那一页是不是在你手上？';
+      ta.dispatchEvent(new w.Event('input', { bubbles: true }));
+      btn.click();
+
+      /* 真模型要现场推理：最多等 8 分钟（本机 CPU 可能要几十秒）。
+         现在是流式：AI 占位消息会立刻出现但文本为空，所以要等「有字」才算首字到达。
+         ★ 这里刻意用「少量长等待」而不是密集轮询：无头 Edge 的虚拟时间会把密集的
+           短定时器瞬间跑完，导致 DOM 在流还没结束时就 dump。 */
+      const hasText = () => aiMsgs().some(m => String(m.text || '').trim().length > 0);
+      let waited = 0;
+      while (waited < 120000 && !hasText()) { await wait(15000); waited += 15000; }
+      const sec = ((Date.now() - t0) / 1000).toFixed(1);
+      P((hasText() ? '  ✓ ' : '  · ') + '模型是否已经回话：' + (hasText() ? '是' : '这次没等到（虚拟时间可能提前 dump，看下面两条把关）') +
+        '（等待 ' + (waited / 1000) + 's，总计 ' + sec + 's）');
+      /* 等结算（流式结束后 turn 才会 +1）。
+         ★ 注意：无头 Edge 的 --virtual-time-budget 对「流式响应」不会暂停虚拟时间，
+         所以 DOM 有可能在流还没结束时就被 dump —— 这一条只如实报告，不作硬断言；
+         结算逻辑由 tools/smoke-stream.html（确定性假流）与 tools/check-stream-server.js 负责把关。 */
+      let w2 = 0;
+      while (w2 < 60000 && conv().turn === 0 && !conv().messages.some(m => m.role === 'notice' && /失败/.test(m.text))) { await wait(10000); w2 += 10000; }
+      P((conv().turn > 0 ? '  ✓ ' : '  · ') + '回合结算：turn=' + conv().turn +
+        (conv().turn > 0 ? '' : '（可能只是截图早于流结束，结算本身由 smoke-stream 把关）'));
+      const last = aiMsgs().slice(-1)[0] || {};
+      P('回复（' + String(last.text || '').length + ' 字）：');
+      P(String(last.text || '').slice(0, 600));
+      ok(!!last.meta && last.meta.online === true, '这条回复走的是在线模型通道（不是脚本）');
+      const notices = conv().messages.filter(m => m.role === 'notice').map(m => m.text);
+      P('系统通知：' + JSON.stringify(notices));
+      P((notices.some(t => /模型调用失败|不可用/.test(t)) ? '  ✗ ' : '  ✓ ') +
+        '有没有模型调用失败：' + (notices.some(t => /模型调用失败|不可用/.test(t)) ? '有（要人工看一眼）' : '没有'));
+      P((notices.some(t => /回退本地演绎引擎/.test(t)) ? '  ✗ ' : '  ✓ ') +
+        '有没有偷偷回退脚本引擎：' + (notices.some(t => /回退本地演绎引擎/.test(t)) ? '有（要人工看一眼）' : '没有'));
+      P('状态：hp=' + conv().hp + '/' + conv().maxHp + ' 推进度=' + conv().progress + '% 心境=' + w.RP.chat.moodOf(conv().affinity).name);
+      P('=== 观察完成 ===（不判 PASS/FAIL：无头虚拟时间对长流式不可靠；把关在 check-stream-server.js 与 smoke-stream.html）');
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.getElementById('out').textContent = log.join('\n');
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

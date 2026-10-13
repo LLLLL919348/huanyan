@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!-- 前端流式管线测试（不依赖真模型）：把 /api/chat 换成一个「慢慢吐字」的假流，
+     验收「文字一段段长出来 + 光标 + 收尾结算 + 不支持流式时自动回退」 -->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+let fails = 0;
+function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  w.addEventListener('error', function (e) { log.push('!! error: ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); fails++; });
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const conv = () => w.RP.store.active();
+  const aiMsgs = () => conv().messages.filter(m => m.role === 'ai');
+
+  /* 假流：把一段带行为台词与 STATE 尾注的回复拆成 12 片，每片间隔一点时间 */
+  const REPLY = '（他把灯往你这边偏了半寸，替你挡住那道视线）这件事，不该在灯市里说。\n' +
+    '_〔惩戒 hp=-5 好感=-3〕沈明烛把灯芯按灭：「问得太多，就是你的不对了。」_\n' +
+    '<<<STATE {"hp":-5,"affinity":-1,"progress":12,"flag":"none","aid":null,"reason":"越界追问"}>>>';
+  function installFakeStream(useSse) {
+    const realFetch = w.fetch;
+    w.fetch = function (url, opts) {
+      if (String(url).indexOf('/api/chat') === -1) return realFetch.apply(w, arguments);
+      if (!useSse) {
+        return Promise.resolve(new w.Response(JSON.stringify({ ok: true, text: REPLY, quota: { left: 19, limit: 20 } }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      const enc = new w.TextEncoder();
+      const parts = [];
+      const chars = Array.from(REPLY);
+      const per = Math.ceil(chars.length / 12);
+      for (let i = 0; i < chars.length; i += per) parts.push(chars.slice(i, i + per).join(''));
+      let idx = 0;
+      const stream = new w.ReadableStream({
+        start: function (ctrl) {
+          ctrl.enqueue(enc.encode('data: {"t":"","ping":true}\n\n'));
+        },
+        pull: function (ctrl) {
+          return new Promise(function (resolve) {
+            setTimeout(function () {
+              if (idx < parts.length) {
+                ctrl.enqueue(enc.encode('data: ' + JSON.stringify({ t: parts[idx] }) + '\n\n'));
+                idx++;
+                resolve();
+              } else {
+                ctrl.enqueue(enc.encode('data: ' + JSON.stringify({ done: true, text: REPLY, quota: { left: 19, limit: 20 } }) + '\n\n'));
+                ctrl.close();
+                resolve();
+              }
+            }, 60);
+          });
+        }
+      });
+      return Promise.resolve(new w.Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream; charset=utf-8' } }));
+    };
+    return function () { w.fetch = realFetch; };
+  }
+
+  (async function () {
+    try {
+      for (let i = 0; i < 80 && !d.querySelector('.res-card'); i++) await wait(200);
+      w.RP.app.play('changan-yeweiyang');
+      await wait(800);
+
+      /* ---------- 1. 真流式 ---------- */
+      P('【流式渲染】');
+      const restore = installFakeStream(true);
+      const ta = d.getElementById('chatInput');
+      ta.value = '十年前御史台那桩灭门案，卷宗少了一页。那一页是不是在你手上？';
+      ta.dispatchEvent(new w.Event('input', { bubbles: true }));
+      d.getElementById('btnSend').click();
+
+      const seen = [];        // 每次采样时气泡里的字数
+      let caretSeen = false, maxLen = 0;
+      for (let i = 0; i < 60; i++) {
+        await wait(60);
+        const row = d.querySelector('#messages .msg-row.ai:last-child');
+        const bubble = row ? row.querySelector('.bubble') : null;
+        if (!bubble) continue;
+        if (bubble.querySelector('.caret')) caretSeen = true;
+        const len = (bubble.textContent || '').length;
+        if (len > maxLen) { maxLen = len; seen.push(len); }
+        if (conv().turn > 0 && !d.querySelector('#messages .bubble.streaming')) break;
+      }
+      P('  气泡字数增长：' + seen.slice(0, 14).join(' → '));
+      ok(seen.length >= 3, '文字是分多次长出来的（不是一次性出现）', seen.length + ' 次增长');
+      ok(caretSeen, '流式过程中出现过光标');
+      ok(conv().turn === 1, '这一轮被正常结算（turn=1）', 'turn=' + conv().turn);
+      const ai = aiMsgs().slice(-1)[0] || {};
+      ok(/问得太多/.test(String(ai.text || '')), '最终文本落到了消息里');
+      ok(String(ai.text || '').indexOf('STATE') === -1, 'STATE 尾注没有混进气泡', String(ai.text || '').slice(-40));
+      ok(conv().hp === 20, '正常提问被模型误判扣血 → 公平性兜底作废（hp 保持不变）', 'hp=' + conv().hp);
+      ok(conv().messages.some(m => m.role === 'notice' && /判定(已)?作废/.test(m.text)), '而且给出了「判定作废」说明');
+      ok(!d.querySelector('#messages .bubble.streaming'), '结束后光标摘掉了');
+      ok(conv().messages.filter(m => m.role === 'ai').length === 1, '没有重复 push 出两条 AI 消息',
+        String(conv().messages.filter(m => m.role === 'ai').length));
+      restore();
+
+      /* ---------- 2. 用户往上翻时，绝对不能被「流式更新」拽回底部 ---------- */
+      P('【滚动不被打断】');
+      w.RP.app.play('changan-yeweiyang');
+      await wait(800);
+      /* 先铺几条历史消息，制造可滚动的高度 */
+      const box = d.getElementById('messages');
+      const cv0 = conv();
+      for (let i = 0; i < 6; i++) {
+        cv0.messages.push({ id: 'h' + i, ts: Date.now(), role: 'user', text: '（历史消息 ' + (i + 1) + '）这一段只是为了把消息区撑高，方便验证滚动。', meta: {} });
+        cv0.messages.push({ id: 'a' + i, ts: Date.now(), role: 'ai', text: '（历史回复 ' + (i + 1) + '）收到。', meta: {} });
+      }
+      w.RP.store.save();
+      w.RP.chat.renderMessages(true);
+      await wait(200);
+      ok(box.scrollHeight > box.clientHeight + 40, '消息区确实可以滚动', box.scrollHeight + ' > ' + box.clientHeight);
+      if (box.scrollHeight <= box.clientHeight + 40) {
+        const cs2 = el => w.getComputedStyle(el);
+        const chain = ['#view-chat', '.main', '.workbench', '.app', '.chat', '.chat-stage', '.messages'].map(function (sel) {
+          const el = d.querySelector(sel);
+          return sel + '={h:' + Math.round(el.getBoundingClientRect().height) + ',ch:' + el.clientHeight + ',pos:' + cs2(el).position + ',oy:' + cs2(el).overflowY + '}';
+        }).join(' ');
+        P('  高度链：' + chain + ' | 视口 ' + w.innerHeight + ' | body.overflow=' + cs2(d.body).overflow + ' | .app.h=' + Math.round(d.querySelector('.app').getBoundingClientRect().height));
+      }
+
+      const restore3 = installFakeStream(true);
+      const ta3 = d.getElementById('chatInput');
+      ta3.value = '滚开，你这废物，别挡着我办事。';
+      ta3.dispatchEvent(new w.Event('input', { bubbles: true }));
+      d.getElementById('btnSend').click();
+      await wait(120);
+      /* 用户主动往上翻 */
+      box.scrollTop = 0;
+      box.dispatchEvent(new w.Event('scroll'));
+      await wait(80);
+      const afterScrollUp = box.scrollTop;
+      /* 等流式继续吐字（这就是以前把人拽回底部的地方） */
+      await wait(1200);
+      ok(box.scrollTop <= afterScrollUp + 6,
+        '流式吐字期间没有被拽回底部（滚轮不再「失灵」）',
+        'scrollTop ' + afterScrollUp + ' → ' + box.scrollTop);
+      ok(!!d.getElementById('jumpLatest'), '往上翻时出现「回到最新」浮标');
+      const jb = d.getElementById('jumpLatest');
+      if (jb) {
+        jb.click();
+        await wait(150);
+        ok(box.scrollTop > box.scrollHeight - box.clientHeight - 20, '点「回到最新」能回到底部', String(box.scrollTop));
+        ok(!d.getElementById('jumpLatest'), '回到底部后浮标消失');
+      }
+      /* 等这一轮结束，清干净 */
+      for (let i = 0; i < 60 && !d.querySelector('#messages .bubble.streaming'); i++) await wait(200);
+      await wait(400);
+      restore3();
+
+      /* ---------- 3. 服务端不支持流式 → 自动回退一次性请求 ---------- */
+      P('【回退路径】');
+      w.RP.app.play('changan-yeweiyang');
+      await wait(800);
+      const restore2 = installFakeStream(false);
+      const ta2 = d.getElementById('chatInput');
+      ta2.value = '滚开，你这废物，别挡着我办事。';
+      ta2.dispatchEvent(new w.Event('input', { bubbles: true }));
+      d.getElementById('btnSend').click();
+      for (let i = 0; i < 80 && conv().turn === 0; i++) await wait(120);
+      ok(conv().turn === 1, '回退后也能完成这一轮', 'turn=' + conv().turn);
+      ok(aiMsgs().length === 1, '回退路径也没有重复消息（没有留下空的占位气泡）', String(aiMsgs().length));
+      ok(/问得太多/.test(String(aiMsgs().slice(-1)[0].text || '')), '回退路径的正文也落进了消息');
+      ok(conv().hp === 15, '回退路径的结算同样生效（辱骂 → 惩戒 -5）', 'hp=' + conv().hp);
+      restore2();
+      /* 清掉本轮通知，避免影响后面的判断 */
+      P('  通知：' + JSON.stringify(conv().messages.filter(m => m.role === 'notice').map(m => m.text.slice(0, 40))));
+
+      P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

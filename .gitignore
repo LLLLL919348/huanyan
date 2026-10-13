@@ -1,0 +1,26 @@
+# ============================================================
+# 幻言 · 站点内容备份仓库
+# 只忽略“运行期状态”和“本机配置”，站点内容本身全部入库。
+# ============================================================
+
+# --- 本机模型配置：现在是本机 ollama，将来若填云端 key 就会含密钥 ---
+# 格式模板见 data/model.example.json
+data/model.json
+
+# --- 运行期状态：每次运行都会变，且含访客标识/统计 ---
+data/quota.json
+data/server-error.log
+data/runtime/
+*.log
+
+# --- 本机临时产物 ---
+tools/shots/
+tools/.cache/
+tmp/
+temp/
+
+# --- 系统垃圾 ---
+node_modules/
+.DS_Store
+Thumbs.db
+desktop.ini

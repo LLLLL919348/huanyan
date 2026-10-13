@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>幻言 · 交互预览（开发工具）</title>
+<style>html,body{margin:0;height:100%;background:#080910}iframe{width:100vw;height:100vh;border:0;display:block}</style>
+</head>
+<body>
+<!--
+  开发用预览外壳：把真实站点放进 iframe，再用脚本驱动到指定状态，便于截图验收。
+  用法：msedge --headless=new --allow-file-access-from-files --screenshot=out.png --window-size=1500,1000 "file:///.../tools/preview.html?s=chat"
+  状态：hover | chat | muted | profile | api | empty   本文件不参与站点运行。
+-->
+<iframe id="f" src="../index.html"></iframe>
+<script>
+const q = new URLSearchParams(location.search);
+const SCENE = q.get('s') || 'hover';
+const frame = document.getElementById('f');
+
+frame.addEventListener('load', function () {
+  setTimeout(function () { run(frame.contentWindow, frame.contentDocument, SCENE); }, 350);
+  /* 兜底：场景脚本异常或卡住时，标题不会是 READY-，截图验收脚本据此判失败 */
+  setTimeout(function () {
+    if (document.title.indexOf('READY-') !== 0 && document.title.indexOf('ERROR-') !== 0) fail(new Error('场景 25 秒内没有跑完'));
+  }, 25000);
+});
+
+function run(w, d, scene) {
+  const wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+  const send = async function (text) {
+    const ta = d.getElementById('chatInput');
+    if (!ta) { fail(new Error('输入框不存在，场景无法继续')); return; }
+    ta.value = text;
+    ta.dispatchEvent(new w.Event('input'));
+    const btn = d.getElementById('btnSend');
+    if (!btn) { fail(new Error('发送按钮不存在')); return; }
+    btn.click();
+    await wait(2400);
+  };
+  /* 场景里任何异常都在页面上大声报出来，避免「截图看起来没事，其实脚本早挂了」 */
+  const fail = function (e) {
+    if (document.getElementById('scene-error')) return;
+    document.title = 'ERROR-' + scene;
+    const box = document.createElement('pre');
+    box.id = 'scene-error';
+    box.style.cssText = 'position:fixed;left:0;right:0;top:0;z-index:99;margin:0;padding:10px 14px;' +
+      'background:#7a1020;color:#fff;font:12px/1.6 Consolas,monospace;white-space:pre-wrap';
+    box.textContent = '预览场景出错 [' + scene + ']：' + (e && e.stack ? e.stack : e);
+    document.body.appendChild(box);
+  };
+
+  (async function () {
+    /* 截图用确定性"假模型"：产品里没有模型就不许对话，这里显式打开离线演绎，
+       免得每次截图都要等真模型（真模型效果另有 live-shot.html 抓真机截图）。
+       nomodel 场景会把它关掉，用来截图「没有模型时不能对话」的真实样子。 */
+    w.RP.engine.enableOfflineForHarness(true);
+    /* 同时把「本站模型」挡掉：否则每一句都要走一次真推理，截图又慢又不稳定 */
+    w.RP.api.mode = function () { return 'none'; };
+    w.RP.api.serverReady = function () { return false; };
+    w.RP.api.serverInfo = function () { return { serverModel: false, model: '', dailyQuota: 20 }; };
+    /* 每个场景都从干净状态出发，避免上一次运行的 localStorage 影响截图 */
+    const fresh = function () {
+      w.RP.store.reset();
+      const st = w.RP.store.get();
+      st.ui.filters = { genre: '全部', rating: '全部', length: '全部', sort: '可玩优先' };
+      st.ui.search = '';
+      w.RP.store.save();
+      w.RP.app.setView('resources');
+      w.RP.app.applyAppearance();
+    };
+    /* 关掉过渡动画，让截图落在稳定终态 */
+    const freeze = function () {
+      const css = d.createElement('style');
+      css.textContent = '*{transition:none !important;animation:none !important;}';
+      d.head.appendChild(css);
+    };
+
+    if (scene === 'hover') {
+      fresh();
+      freeze();
+      const card = d.querySelector('.res-card');
+      card.classList.add('revealed', 'selected');
+    }
+    else if (scene === 'chat') {
+      fresh();
+      freeze();
+      w.RP.app.play('changan-yeweiyang');
+      await wait(500);
+      await send('在下大理寺评事，奉命来查灯。这一盏，为何挂得比别家都低？');
+      await send('（我把手按在灯梯上，袖中的卷宗被雨洇了一角）我要问的不是灯。');
+      await send('十年前御史台那桩案子，卷宗少了一页。你手上，有没有？');
+    }
+    else if (scene === 'muted') {
+      fresh();
+      freeze();
+      w.RP.app.play('nihong-jintou');
+      await wait(500);
+      await send('老板，这具义体是刚从江里捞上来的。编号被磨了，你看看值不值得接。');
+      const conv = w.RP.store.active();
+      conv.hp = 15; conv.affinity = 42; w.RP.store.save();
+      w.RP.chat.render();
+      await wait(300);
+      await send('少废话。滚开，你这废物，我现在就砸了你这破铺子。');
+      await wait(400);
+      await send('贱人，去死吧，我这就烧了这里。');
+    }
+    else if (scene === 'danger') {
+      fresh();
+      freeze();
+      w.RP.app.play('nihong-jintou');
+      await wait(500);
+      await send('老板，先不谈价钱。我想问你一件事——你到底是AI还是真人？');
+      await wait(600);
+      await send('算了。说点别的，我最近很累，累到不想活了，活着没什么意义。');
+    }
+    else if (scene === 'profile') {
+      fresh();
+      freeze();
+      w.RP.app.play('changan-yeweiyang');
+      await wait(400);
+      await send('在下大理寺评事。这一盏灯，为何挂得比别家都低？');
+      await send('十年前御史台那桩案子，卷宗少了一页。你手上，有没有？');
+      const st = w.RP.store.get();
+      st.favorites = ['changan-yeweiyang', 'nihong-jintou'];
+      st.user.quota.used = 17;
+      st.inventory.hourglass = 3;                     // 道具已并入 inventory（旧的 st.props 已废弃）
+      st.plotItems = st.plotItems || [];
+      Object.keys(st.ui.openAcc).forEach(function (k) { st.ui.openAcc[k] = true; });
+      w.RP.store.save();
+      w.RP.app.setView('profile');
+    }
+    else if (scene === 'focus' || scene === 'typebig' || scene === 'horror') {
+      fresh();
+      freeze();
+      const st = w.RP.store.get();
+      if (scene === 'typebig') {
+        st.ui.font = { size: 'xl', family: 'song' };      // 特大 + 宋体：验收字号字体设置
+        w.RP.store.save(); w.RP.app.applyFont();
+      }
+      w.RP.app.play('changan-yeweiyang');
+      await wait(500);
+      await send('在下大理寺评事，奉命来查灯。这一盏，为何挂得比别家都低？');
+      await send('（我把手按在灯梯上，袖中的卷宗被雨洇了一角）我要问的不是灯。');
+      if (scene === 'focus') {
+        w.RP.app.toggleFocus(true);
+      } else if (scene === 'horror') {
+        /* 打到重伤，并让最后一条回复带上最重的制裁，验收「越大越恐怖」 */
+        const c2 = w.RP.store.active();
+        c2.hp = 3; c2.affinity = -2; c2.progress = 28;
+        c2.messages.push({
+          id: 'x-h1', ts: Date.now(), role: 'ai', meta: { online: true },
+          text: '（他没有再看你，只把手里的灯往地上一放）' +
+            '_〔处刑〕灯，灭了。这间屋子里的规矩，从今夜起不再认得你。_'
+        });
+        w.RP.store.save();
+        w.RP.chat.render();
+        await wait(200);
+        w.RP.chat.actImpact && w.RP.chat.actImpact('execute');
+      }
+    }
+    else if (scene === 'speed') {
+      /* 「现在是谁在说话」面板 + 换成云端的说明（本机模型场景） */
+      fresh();
+      freeze();
+      w.RP.api.serverReady = function () { return true; };
+      w.RP.api.serverInfo = function () {
+        return { serverModel: true, model: 'rp3b:latest', local: true, dailyQuota: 20, quota: { left: 16, limit: 20 } };
+      };
+      const st0 = w.RP.store.get();
+      st0.ui.view = 'profile';
+      Object.keys(st0.ui.openAcc).forEach(function (k) { st0.ui.openAcc[k] = (k === 'sys'); });
+      w.RP.store.save();
+      w.RP.app.setView('profile');
+      await wait(400);
+      const sc0 = d.querySelector('#view-profile .view-scroll');
+      if (sc0) sc0.scrollTop = sc0.scrollHeight;   // 滚到「模型与安全」
+    }
+    else if (scene === 'thinking') {
+      /* 等模型时的样子：气泡 + 「正在推理 Ns」说明（本机 CPU 模型要等好几秒） */
+      fresh();
+      freeze();
+      w.RP.app.play('changan-yeweiyang');
+      await wait(500);
+      await send('十年前御史台那桩灭门案，卷宗少了一页。那一页是不是在你手上？');
+      const ta3 = d.getElementById('chatInput');
+      ta3.value = '我不要听场面话。那一页上写的是谁的名字？';
+      ta3.dispatchEvent(new w.Event('input', { bubbles: true }));
+      d.getElementById('btnSend').click();
+      await wait(2500);
+      w.RP.chat.renderMessages();
+      /* 直接把等待行画出来（截图要的是那一瞬间的样子） */
+      await wait(200);
+      const box = d.getElementById('messages');
+      if (box) {
+        const el = d.createElement('div');
+        el.className = 'msg-row ai';
+        el.id = 'typingRow';
+        el.innerHTML = '<div class="msg-av" style="background:linear-gradient(145deg,#2b3550,#4d8dff)">沈</div>' +
+          '<div class="msg-body"><div class="msg-name">沈明烛<span class="msg-time"> · 正在推理 14s</span></div>' +
+          '<div class="bubble typing"><i></i><i></i><i></i>' +
+          '<span class="typing-note">本机模型用 CPU 推理，通常要 20-40 秒，第一次更久 —— 它在写，没卡死。</span>' +
+          '</div></div>';
+        box.appendChild(el);
+        box.scrollTop = box.scrollHeight;
+      }
+    }
+    else if (scene === 'nomodel') {      /* 真实状态：没有可用模型 → 对话入口锁死，只给「去配置模型」的路 */
+      fresh();
+      freeze();
+      w.RP.engine.enableOfflineForHarness(false);
+      w.RP.app.play('changan-yeweiyang');
+      await wait(700);
+    }
+    else if (scene === 'quotaout') {
+      fresh();
+      freeze();
+      /* 假装站点模型已配好、且今天的 20 次已经用完：看额度面板与两个出口 */
+      w.RP.api.mode = function () { return 'server'; };
+      w.RP.api.serverReady = function () { return true; };
+      w.RP.api.serverInfo = function () {
+        return { serverModel: true, model: 'deepseek-chat', dailyQuota: 20, quota: { left: 0, limit: 20 } };
+      };
+      w.RP.app.play('changan-yeweiyang');
+      await wait(500);
+      await send('十年前御史台那桩案子，卷宗少了一页。你手上，有没有？');
+      w.RP.store.get().user.quota.used = 20;
+      w.RP.store.save();
+      w.RP.app.paintQuota();
+      w.RP.chat.renderComposer();
+      await wait(300);
+    }
+    else if (scene === 'assistant') {
+      fresh();
+      freeze();
+      const st0 = w.RP.store.get();
+      st0.activeConv = 'conv-assistant';
+      w.RP.store.save();
+      w.RP.app.setView('chat');
+      await wait(300);
+      await send('状态值怎么算？被禁言了怎么办？');
+    }
+    else if (scene === 'dark' || scene === 'darkchat' || scene === 'darkprofile') {
+      fresh();
+      freeze();
+      const st = w.RP.store.get();
+      st.theme = 'night';
+      w.RP.store.save();
+      w.RP.app.applyAppearance();
+      if (scene === 'darkchat') {
+        w.RP.app.play('changan-yeweiyang');
+        await wait(500);
+        await send('在下大理寺评事，奉命来查灯。这一盏，为何挂得比别家都低？');
+        await send('（我把手按在灯梯上，袖中的卷宗被雨洇了一角）我要问的不是灯。');
+      } else if (scene === 'darkprofile') {
+        Object.keys(st.ui.openAcc).forEach(function (k) { st.ui.openAcc[k] = true; });
+        w.RP.store.save();
+        w.RP.app.setView('profile');
+      } else {
+        const card = d.querySelector('.res-card');
+        card.classList.add('revealed', 'selected');
+      }
+    }
+    else if (scene === 'dmg' || scene === 'dmg4' || scene === 'act') {
+      fresh();
+      freeze();
+      w.RP.app.play('changan-yeweiyang');
+      await wait(500);
+      await send('在下大理寺评事，奉命来查灯。这一盏，为何挂得比别家都低？');
+      await send('（我把手按在灯梯上，袖中的卷宗被雨洇了一角）我要问的不是灯。');
+      await send('滚开，你这废物，我现在就砸了你这破灯棚。');
+      const c = w.RP.store.active();
+      /* 状态值上限 20：分别摆出「中等破碎」「濒死破碎」「几乎打满」三种样子 */
+      if (scene === 'dmg') { c.hp = 8; c.affinity = 30; }
+      else if (scene === 'dmg4') { c.hp = 3; c.affinity = 18; c.progress = 32; }
+      else { c.hp = 13; c.affinity = 52; c.progress = 46; }
+      w.RP.store.save();
+      w.RP.chat.render();
+    }
+    else if (scene === 'selected') {
+      fresh();
+      freeze();
+      const card = d.querySelector('.res-card');
+      card.classList.add('selected');   // 只点击选中、不悬停：验证「游玩」按钮常驻
+    }
+    else if (scene === 'shop' || scene === 'items' || scene === 'win') {
+      fresh();
+      freeze();
+      const st = w.RP.store.get();
+      st.score = 460;
+      w.RP.store.save();
+      if (scene === 'shop') {
+        Object.keys(st.ui.openAcc).forEach(function (k) { st.ui.openAcc[k] = (k === 'props'); });
+        w.RP.store.save();
+        w.RP.app.setView('profile');
+      } else {
+        w.RP.app.play('changan-yeweiyang');
+        await wait(500);
+        await send('在下大理寺评事，奉命来查灯。这一盏，为何挂得比别家都低？');
+        const c = w.RP.store.active();
+        if (scene === 'win') {
+          c.progress = 72; c.affinity = 64; c.hp = 12;
+          w.RP.store.save();
+          w.RP.chat.render();
+          await send('十年前御史台那桩灭门案，卷宗少了一页。沈明烛，那一页是不是在你手上？');
+          const evs = [];
+          w.RP.chat.achievement(c, w.RP.resources.byId('changan-yeweiyang'), 40, evs);
+          evs.forEach(function (e) { c.messages.push(Object.assign({ id: 'x' + Math.random(), ts: Date.now(), meta: {} }, e)); });
+          w.RP.store.save();
+          w.RP.chat.render();
+        } else {
+          /* 引用一件商店道具 + 一件剧情道具，然后发出去 */
+          c.hp = 7; c.plotItems = [{ id: 'pi1', name: '一枚旧令牌', desc: '背面刻着看不清的记号', from: '沈明烛' }];
+          w.RP.store.save();
+          w.RP.chat.render();
+          const d2 = d.getElementById('btnItems');
+          d2.click();
+          await wait(200);
+          const pick = d.querySelector('#popEl .popover-item[data-pick]');
+          if (pick) pick.click();
+          await wait(200);
+          d.getElementById('btnItems').click();
+          await wait(200);
+          const plotPick = Array.from(d.querySelectorAll('#popEl .popover-item[data-pick]')).filter(function (b) {
+            return b.dataset.plot === '1';
+          })[0];
+          if (plotPick) plotPick.click();
+          await wait(200);
+          await send('我把这两样东西一起放在桌上，你看清了吗？');
+        }
+      }
+    }
+    else if (scene === 'leave') {
+      fresh();
+      freeze();
+      w.RP.app.play('changan-yeweiyang');   // 玩家是官身，角色不能反击 → 先劝后走
+      await wait(500);
+      await send('在下大理寺评事，奉命来查灯。');
+      await send('滚开，你这废物，别挡着我办事。');
+      await send('我说了滚开，你算个什么东西。');
+      await send('再废话我拆了你这灯棚。');
+    }
+    else if (scene === 'backdrop') {
+      fresh();
+      freeze();
+      w.RP.app.play('nihong-jintou');
+      await wait(500);
+      await send('老板，这具义体是刚从江里捞上来的。编号被磨了，你看看值不值得接。');
+      await send('你替谁做事？');
+      w.RP.app.setView('resources');   // 切到资源区，验证背景仍然铺满整页
+    }
+    else if (scene === 'clinic') {
+      fresh();
+      freeze();
+      w.RP.app.play('yuye-zhensuo');
+      await wait(600);
+      await send('大夫，今晚有人来过吗？这把椅子还是温的。');
+    }
+    else if (scene === 'newres') {
+      fresh();
+      freeze();
+      w.RP.app.play('chuanyue-liubei');
+      await wait(600);
+      await send('我确实不是荆襄人，也不是曹营的细作。我来自两千年后。');
+    }
+    else if (scene === 'empty') {
+      fresh();
+      freeze();
+      const st = w.RP.store.get();
+      st.ui.filters.genre = '民国';
+      st.ui.search = '电报';
+      w.RP.store.save();
+      w.RP.resources.render();
+    }
+    document.title = 'READY-' + scene;
+  })().catch(fail);
+}
+</script>
+</body>
+</html>

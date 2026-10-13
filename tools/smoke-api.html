@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!-- 前后端联调测试：从 http 打开站点，确认资源与设置都来自后端 -->
+<iframe id="f" src="/index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = [];
+const P = s => log.push(s);
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  (async function () {
+    try {
+      for (let i = 0; i < 60 && !d.querySelector('.res-card'); i++) await wait(200);
+      P('后端连接：' + w.RP.data.isBackend());
+      P('设置来源：' + (w.RP.settings.isLoaded() ? '后端 /api/settings' : '内置默认值'));
+      P('资源数：' + (w.RP_RESOURCES || []).length + '  卡片数：' + d.querySelectorAll('.res-card').length);
+      P('站点名（顶栏）：' + (d.querySelector('.brand-text strong') || {}).textContent);
+      P('页脚声明条数：' + d.querySelectorAll('.global-foot span:not(.sep)').length);
+      P('会话助手标题：' + (d.querySelector('.conv-item .conv-title span') || {}).textContent);
+      // 切到对话区，确认默认落在会话助手、且指南来自后端
+      w.RP.app.setView('chat');
+      await wait(500);
+      P('默认会话：' + (w.RP.store.active() || {}).title + '（应为 会话助手）');
+      P('助手指南条数：' + d.querySelectorAll('.reminder ol li').length + '（应为 6，来自后端 assistant.guide）');
+      P('助手欢迎语来自后端：' + /欢迎来到幻言/.test(d.body.textContent));
+      w.RP.app.setView('resources');
+      await wait(200);
+      const badge = Array.from(d.querySelectorAll('.global-foot span')).map(x => x.textContent).join(' | ');
+      P('页脚内容：' + badge.slice(0, 90));
+
+      // 用一个后端资源开场，确认提示词链路
+      w.RP.app.play('nihong-jintou');
+      await wait(800);
+      const conv = w.RP.store.active();
+      P('开场会话：' + conv.title + '  hp=' + conv.hp + ' progress=' + conv.progress);
+      P('剧情提醒条数：' + d.querySelectorAll('.reminder ol li').length +
+        ' 规则条数：' + d.querySelectorAll('.reminder-rules li').length);
+      P('提醒含行为台词：' + /行为台词/.test(d.querySelector('.reminder').textContent));
+      P('系统提示词长度（拼装后）：' + w.RP.api.buildSystemPrompt(w.RP.resources.byId('nihong-jintou'), conv).length);
+      P('提示词含行为台词协议：' + /行为台词协议/.test(w.RP.api.buildSystemPrompt(w.RP.resources.byId('nihong-jintou'), conv)));
+      P('提示词含场景固定：' + /场景固定/.test(w.RP.api.buildSystemPrompt(w.RP.resources.byId('nihong-jintou'), conv)));
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); }
+    document.getElementById('out').textContent = log.join('\n');
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

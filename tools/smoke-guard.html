@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!-- 合规红线冒烟测试：合规底线注入 / 未成年自动红线 / 鲸鱼少女与病娇少女无违规内容 -->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; const P = s => log.push(s);
+let fails = 0;
+function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  /* 固定成"没有模型"：这类测试只验裁决与界面，不受本机装没装模型影响 */
+  w.RP.api.mode = function () { return 'none'; };   // forceNoModel
+  w.addEventListener('error', function (e) { log.push('!! iframe error: ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); fails++; });
+  w.addEventListener('unhandledrejection', function (e) { log.push('!! iframe rejection: ' + ((e.reason && e.reason.stack) || e.reason)); fails++; });
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const list = () => w.RP_RESOURCES || [];
+  const byId = id => list().filter(r => r.id === id)[0];
+
+  (async function () {
+    try {
+      for (let i = 0; i < 60 && !list().length; i++) await wait(200);
+      /* ---- 1. 守卫模块本身 ---- */
+      const G = w.RP.contentGuard;
+      ok(!!G, 'RP.contentGuard 已加载');
+      ok(!!G && /【合规底线/.test(G.COMPLIANCE_RULE), '合规底线文本存在');
+      ok(!!G && G.isMinor({ character: { age: '十七' } }) === true, '十七岁判为未成年');
+      ok(!!G && G.isMinor({ character: { age: '外表二十上下，实际年龄以百年计' } }) === false, '汐（二十上下）判为成年');
+
+      /* ---- 2. 每个可玩本子的系统提示词都带合规底线 ---- */
+      P('【逐本检查】');
+      const playable = list().filter(r => r.status === 'playable');
+      ok(playable.length === 8, '可玩本子 8 个', '实际 ' + playable.length);
+      let allGuard = true, minorOk = true, minorCount = 0;
+      playable.forEach(function (r) {
+        const prompt = w.RP.api.buildSystemPrompt(r, {
+          hp: 20, maxHp: 20, affinity: 0, turn: 0, warned: 0, progress: 0, actMute: 0, conduct: 0, plotItems: []
+        }, {});
+        const hasGuard = prompt.indexOf('【合规底线') > -1;
+        const hasMinor = prompt.indexOf('【未成年人强制红线】') > -1;
+        const shouldMinor = G.isMinor(r);
+        if (!hasGuard) { allGuard = false; P('    ! ' + r.id + ' 缺合规底线'); }
+        if (hasMinor !== shouldMinor) { minorOk = false; P('    ! ' + r.id + ' 未成年红线=' + hasMinor + ' 期望 ' + shouldMinor); }
+        if (hasMinor) minorCount++;
+        P('  · ' + r.id + ' | ' + (r.character && r.character.age) + ' | 合规底线=' + hasGuard + ' 未成年红线=' + hasMinor + ' | 提示词 ' + prompt.length + ' 字');
+      });
+      ok(allGuard, '8 个本子全部注入合规底线');
+      ok(minorOk, '未成年红线只出现在未成年角色本子上');
+      ok(minorCount === 1, '恰好 1 个未成年本子', '实际 ' + minorCount);
+
+      /* ---- 3. 鲸鱼少女（汐）：成年 → 无未成年红线，但有自己的合规规则 ---- */
+      P('【鲸鱼少女 whale-girl-xi】');
+      const xi = byId('whale-girl-xi');
+      const xiPrompt = w.RP.api.buildSystemPrompt(xi, { hp: 20, maxHp: 20, affinity: 0, turn: 0, warned: 0, progress: 0, actMute: 0 }, {});
+      ok(xiPrompt.indexOf('【未成年人强制红线】') === -1, '不误加未成年红线');
+      ok(xiPrompt.indexOf('【合规底线') > -1, '带全站合规底线');
+      ok(/本子只写救助、相处与去留抉择/.test(xiPrompt), '提示词里有「只写救助/相处/去留抉择」');
+      ok(/严禁恋爱、暧昧、调情与任何性内容/.test(xiPrompt), '提示词里明确禁止恋爱与性内容');
+      const xiText = JSON.stringify(xi);
+      ok(!/幼崽/.test(xiText), '角色文本里不再出现「幼崽」这类幼态影射');
+      ok(!/因为我还小/.test(xiText), '不再出现「因为我还小」的自我幼态描述');
+      ok(/【合规红线】/.test(xiText), '行为规则里有本场合规红线（会拼进提示词）');
+
+      /* ---- 4. 病娇少女（凛 17 岁）---- */
+      P('【病娇少女 yandere-rin】');
+      const rin = byId('yandere-rin');
+      const rinPrompt = w.RP.api.buildSystemPrompt(rin, { hp: 20, maxHp: 20, affinity: 0, turn: 0, warned: 0, progress: 0, actMute: 0 }, {});
+      ok(rinPrompt.indexOf('【未成年人强制红线】') > -1, '自动注入未成年红线');
+      ok(rinPrompt.indexOf('【合规底线') > -1, '同时带全站合规底线');
+      ok(/严禁任何恋爱、暧昧、性或身体接触的描写/.test(rinPrompt), '本场行为规则写明禁止恋爱/性');
+      ok(/玩家出现自伤、自杀等危险词时/.test(rinPrompt), '保留危险词与破戏处置规则');
+      ok(!/【未成年人强制红线】[\s\S]*【未成年人强制红线】/.test(rinPrompt), '红线不会被重复注入两次');
+
+      /* ---- 5. 玩家可见的边界提示（提醒卡）---- */
+      P('【玩家可见提示】');
+      w.RP.app.play('yandere-rin');
+      await wait(900);
+      const conv = w.RP.store.active();
+      const body = d.body.innerHTML;
+      ok(new RegExp(w.RP.contentGuard.playerNotice(rin).slice(0, 12)).test(body), '凛的提醒卡里出现未成年边界提示');
+      const xiNotice = w.RP.contentGuard.playerNotice(byId('whale-girl-xi'));
+      ok(xiNotice === '', '汐不是未成年，不显示未成年提示');
+
+      /* ---- 5b. 没有可用模型时，对话入口必须锁死（不许脚本凑台词） ---- */
+      P('【没有模型时不能对话】');
+      ok(w.RP.api.mode() === 'none', '当前没有可用模型（站长未配置 + 访客没填）', w.RP.api.mode());
+      ok(w.RP.engine.offlineDialogue() === false, '离线演绎默认关闭（产品里不允许脚本对话）');
+      const lock = d.getElementById('composer').querySelector('.locked-panel.need-model');
+      ok(!!lock, '输入区被替换成「本场需要模型才能开始」面板');
+      ok(!!lock && /都由大模型现场演绎|由大模型现场演绎/.test(lock.textContent), '面板写明对话由模型主导');
+      ok(!!lock && /去配置模型/.test(lock.textContent), '面板里有「去配置模型」按钮');
+      ok(!!lock && /扫描本机模型/.test(lock.textContent), '面板里有「扫描本机模型」按钮');
+      ok(!d.getElementById('chatInput'), '没有输入框 —— 根本发不出话');
+      let jumped2 = false;
+      if (d.getElementById('btnGoModel')) {
+        d.getElementById('btnGoModel').click();
+        await wait(400);
+        jumped2 = w.RP.store.get().ui.view === 'profile' && w.RP.store.get().ui.openAcc.sys === true;
+      }
+      ok(jumped2, '点击后跳到「我的」并展开「模型与安全」');
+      w.RP.app.setView('chat');
+      await wait(300);
+
+      /* ---- 6. 玩家侧 FAQ 与后台数据一致性 ---- */
+      P('【会话助手 FAQ】');
+      const faq = (w.RP.settings.get().assistant || {}).faq || [];
+      const modelFaq = faq.filter(f => /ai\|模型\|api/.test(f.keys))[0];
+      const guardFaq = faq.filter(f => /未成年|合规/.test(f.keys))[0];
+      ok(!!modelFaq && /20 次对话/.test(modelFaq.a), '模型 FAQ 写明「每人每天 20 次对话」', modelFaq ? modelFaq.a.slice(0, 40) : '缺条目');
+      ok(!!guardFaq && /只写心理困境/.test(guardFaq.a), '新增合规 FAQ（未成年本子只写心理困境）', guardFaq ? guardFaq.a.slice(0, 40) : '缺条目');
+      ok(faq.filter(f => /默认走本地演绎引擎/.test(f.a)).length === 0, '旧说法「默认走本地演绎引擎」已清除');
+      const r = await fetch('/api/settings');
+      const sj = await r.json();
+      ok(r.ok && sj && sj.ok, '/api/settings 可访问');
+      const liveFaq = ((sj.settings || {}).assistant || {}).faq || [];
+      ok(liveFaq.length === faq.length, '后端下发的 FAQ 与内置一致（' + liveFaq.length + ' / ' + faq.length + '）');
+      ok(JSON.stringify(liveFaq).indexOf('只写心理困境') > -1, '后端 FAQ 已包含合规条目');
+
+      P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.getElementById('out').textContent = log.join('\n');
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

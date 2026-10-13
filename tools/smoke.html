@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!-- 冒烟测试：驱动真实站点跑一遍关键链路，把结果写进 #out，配合 --dump-dom 读取 -->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = [];
+const P = (s) => log.push(s);
+const f = document.getElementById('f');
+
+f.addEventListener('load', function () {
+  const w = f.contentWindow, d = f.contentDocument;
+  /* 测试专用：产品里没有模型就不允许对话，这里显式打开离线演绎当"假模型" */
+  w.RP.engine.enableOfflineForHarness(true);
+  /* 固定成"没有模型"：这类测试只验裁决与界面，不受本机装没装模型影响 */
+  w.RP.api.mode = function () { return 'none'; };   // forceNoModel
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+  async function send(text) {
+    const ta = d.getElementById('chatInput');
+    if (!ta) { P('!! 输入框不可用（可能被封口）'); return false; }
+    ta.value = text;
+    ta.dispatchEvent(new w.Event('input'));
+    d.getElementById('btnSend').click();
+    await wait(2600);
+    return true;
+  }
+  /* 被封口时点「沉默以对」撑过去 */
+  async function passMute(rounds) {
+    let n = 0;
+    while (d.getElementById('btnSilent') && n < (rounds || 4)) {
+      const before = conv().actMute;
+      d.getElementById('btnSilent').click();
+      await wait(2600);
+      n++;
+      P('  沉默以对：actMute ' + before + ' → ' + conv().actMute + '，turn=' + conv().turn);
+    }
+    return n;
+  }
+  const conv = () => w.RP.store.active();
+
+  (async function () {
+    try {
+      // 0. 等待启动完成
+      for (let i = 0; i < 40 && !d.querySelector('.res-card'); i++) await wait(200);
+      P('模块：settings=' + !!w.RP.settings + ' acts=' + !!w.RP.acts + ' data=' + !!w.RP.data);
+      P('资源数：' + (w.RP_RESOURCES || []).length + '  后端：' + w.RP.data.isBackend());
+      P('设置来源：' + (w.RP.settings.isLoaded() ? '后端' : '内置默认值') +
+        '  globalPrompt 长度=' + w.RP.settings.get().globalPrompt.length);
+      P('卡片数：' + d.querySelectorAll('.res-card').length);
+
+      // 1. 行为台词解析单测
+      const t1 = '_〔惩戒 hp=-12〕她把灯罩按住。_';
+      const p1 = w.RP.acts.parse(t1);
+      const v1 = w.RP.acts.verdict(p1.acts, { hp: -99, affinity: -2, reason: 'x' });
+      P('解析：acts=' + p1.acts.length + ' effect=' + (p1.acts[0] || {}).effect + ' hp=' + v1.hp + ' voided=' + v1.voided);
+      const v2 = w.RP.acts.verdict([], { hp: -30, affinity: 2 });
+      P('无台词时应作废：hp=' + v2.hp + ' voided=' + v2.voided + ' affinity=' + v2.affinity);
+      const v3 = w.RP.acts.verdict(w.RP.acts.parse('_〔禁言 回合=2〕出去。_').acts, {});
+      P('禁言解析：mute=' + v3.mute);
+      const html = w.RP.acts.render(w.RP.util.esc(t1));
+      P('渲染含下划线标签：' + /<u class="act act-punish">/.test(html) + '  含徽标：' + /act-chip/.test(html));
+
+      // 2. 进入剧情
+      w.RP.app.play('changan-yeweiyang');
+      await wait(600);
+      P('会话：' + conv().id.slice(0, 12) + ' 进度=' + conv().progress + ' hp=' + conv().hp);
+      const rem = d.querySelector('.reminder');
+      P('剧情提醒：' + !!rem + ' 条数=' + d.querySelectorAll('.reminder ol li').length +
+        ' 规则条数=' + d.querySelectorAll('.reminder-rules li').length);
+      P('提醒含行为台词说明：' + /行为台词/.test(rem ? rem.textContent : ''));
+
+      // 3. 正常发言
+      await send('在下大理寺评事，奉命来查灯。这一盏，为何挂得比别家都低？');
+      P('正常发言后：turn=' + conv().turn + ' hp=' + conv().hp + ' 进度=' + conv().progress +
+        ' 心境=' + w.RP.chat.moodOf(conv().affinity).name);
+      await send('（我把手按在灯梯上，袖中的卷宗被雨洇了一角）我要问的不是灯。');
+      P('第二句后：turn=' + conv().turn + ' 进度=' + conv().progress + ' 破碎等级=' + w.RP.chat.dmgTier(conv().hp, conv().maxHp));
+
+      // 4. 违规 → 应出现行为台词（改用可反击的本子：霓虹尽头）
+      w.RP.app.play('nihong-jintou');
+      await wait(700);
+      await send('老板，这具义体是刚从江里捞上来的。编号被磨了，你看看值不值得接。');
+      await send('少废话。滚开，你这废物，我现在就砸了你这破铺子。');
+      const acts = d.querySelectorAll('.msg-row.ai .act');
+      P('违规后：warned=' + conv().warned + ' hp=' + conv().hp + ' 行为台词节点=' + acts.length);
+      P('最后一条 AI 文本：' + JSON.stringify((conv().messages.filter(m => m.role === 'ai').slice(-1)[0] || {}).text.slice(0, 70)));
+      P('行为台词提示：' + Array.from(d.querySelectorAll('.notice span')).map(x => x.textContent).slice(-2).join(' ｜ '));
+
+      // 5. 连续违规 → 短暂禁言
+      await send('贱人，去死吧，我这就烧了这里。');
+      await send('我说了，我要砸了你这破店，滚开。');
+      P('三次违规后：warned=' + conv().warned + ' hp=' + conv().hp + ' actMute=' + conv().actMute +
+        ' 破碎等级=' + w.RP.chat.dmgTier(conv().hp, conv().maxHp));
+      const item = d.querySelector('.conv-item[data-id="' + conv().id + '"]');
+      P('左栏该会话 data-dmg=' + (item ? item.getAttribute('data-dmg') : '未找到'));
+      const locked = d.querySelector('#composer .locked-panel');
+      P('输入区锁定：' + (locked ? locked.className + ' / ' + locked.querySelector('h4').textContent : '未锁定'));
+      P('沉默按钮：' + !!d.getElementById('btnSilent'));
+
+      // 6. 沉默以对 → 解除短暂禁言
+      P('沉默流程：');
+      await passMute(4);
+      P('沉默后 actMute=' + conv().actMute + ' 输入框恢复=' + !!d.getElementById('chatInput'));
+
+      // 7. 一路打到归零 → 处刑
+      conv().hp = 12; w.RP.store.save(); w.RP.chat.renderStats();
+      await send('去死吧，我要弄死你，砸了你这破铺子。');
+      P('处刑检查：hp=' + conv().hp + ' muted=' + conv().muted + ' 处刑节点=' + d.querySelectorAll('.execution:not(.leave)').length);
+      P('禁言面板：' + (d.querySelector('#composer .locked-panel h4') ? d.querySelector('#composer .locked-panel h4').textContent : '无'));
+      P('处刑台词含行为台词标记：' + /act-execute/.test(d.querySelector('.execution') ? d.querySelector('.execution').innerHTML : ''));
+
+      // 8. 场景是否已固定（不应再有切换背景按钮 / 场景名）
+      P('切换背景按钮存在？' + !!d.getElementById('btnScene') + '（应为 false）');
+      P('场景名节点存在？' + !!d.querySelector('.stage-name') + '（应为 false）');
+
+      // 9. 游玩按钮：只随悬停/展开出现，鼠标移开必须消失
+      w.RP.app.setView('resources');
+      await wait(400);
+      const st9 = d.createElement('style');
+      st9.textContent = '*{transition:none !important;animation:none !important}';
+      d.head.appendChild(st9);
+      const card = d.querySelector('.res-card');
+      const btn = card.querySelector('.play-btn');
+      card.classList.add('selected', 'revealed');
+      await wait(150);
+      P('悬停展开时 游玩按钮 opacity=' + w.getComputedStyle(btn).opacity + ' pointerEvents=' + w.getComputedStyle(btn).pointerEvents + '（应为 1 / auto）');
+      card.classList.remove('revealed');   // 模拟鼠标移开
+      await wait(150);
+      P('点击后移开鼠标 opacity=' + w.getComputedStyle(btn).opacity + ' pointerEvents=' + w.getComputedStyle(btn).pointerEvents + '（应为 0 / none）');
+      P('此时卡片仍保持选中描边：' + card.classList.contains('selected'));
+
+      P('=== 完成 ===');
+    } catch (e) {
+      P('!! 异常：' + (e && e.stack ? e.stack : e));
+    }
+    document.getElementById('out').textContent = log.join('\n');
+    document.title = 'DONE';
+  })();
+});
+
+window.addEventListener('error', function (e) { P('!! 顶层错误：' + e.message); });
+</script>
+</body>
+</html>

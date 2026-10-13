@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!-- 更新提示测试：模拟服务端 build 变化，页面应弹出「立即刷新」提示条 -->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+let fails = 0;
+function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  w.addEventListener('error', function (e) { log.push('!! error: ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); fails++; });
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  (async function () {
+    try {
+      for (let i = 0; i < 60 && !d.querySelector('.res-card'); i++) await wait(200);
+      P('【构建版本】');
+      ok(!!w.RP.build, '启动时取到了构建号 build=' + w.RP.build);
+      ok(!d.getElementById('updateBar'), '版本一致时不显示提示条');
+
+      /* 把 fetch 换成一个"版本变了"的假响应，然后手动触发一次比对 */
+      const realFetch = w.fetch;
+      w.fetch = function (url, opts) {
+        if (String(url).indexOf('/api/version') > -1) {
+          return Promise.resolve(new w.Response(JSON.stringify({ ok: true, build: Number(w.RP.build) + 1000 }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          }));
+        }
+        return realFetch.apply(w, arguments);
+      };
+      await w.RP.app.checkBuildNow();
+      await wait(400);
+      const bar = d.getElementById('updateBar');
+      ok(!!bar, '检测到新版本后弹出更新提示条');
+      if (bar) {
+        ok(/站点已更新/.test(bar.textContent), '提示文案正确', bar.textContent.slice(0, 40));
+        ok(!!d.getElementById('btnReloadNow'), '有「立即刷新」按钮');
+        ok(!!d.getElementById('btnReloadLater'), '有「稍后」按钮');
+        d.getElementById('btnReloadLater').click();
+        await wait(200);
+        ok(!d.getElementById('updateBar'), '点「稍后」可以关掉提示');
+      }
+      w.fetch = realFetch;
+
+      /* 「我的」面板里显示构建号 */
+      P('【构建号可见】');
+      const st = w.RP.store.get();
+      st.ui.view = 'profile';
+      Object.keys(st.ui.openAcc).forEach(function (k) { st.ui.openAcc[k] = (k === 'sys'); });
+      w.RP.store.save();
+      w.RP.app.setView('profile');
+      await wait(400);
+      const b = d.getElementById('pfBuild');
+      ok(!!b && /构建版本/.test(b.textContent), '「我的 → 模型与安全」里能看到构建号',
+        b ? b.textContent.slice(0, 60) : '无');
+
+      P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

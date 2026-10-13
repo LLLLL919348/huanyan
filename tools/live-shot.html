@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%;background:#080910}iframe{width:100vw;height:100vh;border:0;display:block}
+#out{position:fixed;left:0;bottom:0;right:0;max-height:38%;overflow:auto;background:rgba(0,0,0,.82);color:#9ff;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9;display:none}
+body.debug #out{display:block}</style></head>
+<body>
+<!--
+  真机截图/联调：不装任何"假模型"，让真实模型（本站模型或访客自己的）现场演一轮。
+  用法： tools/live-shot.html?res=changan-yeweiyang&ask=...&shot=1
+        shot=1 时隐藏调试面板，只为截图；默认显示面板方便排查。
+-->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const q = new URLSearchParams(location.search);
+const RES = q.get('res') || 'changan-yeweiyang';
+const ASK = q.get('ask') || '十年前御史台那桩灭门案，卷宗少了一页。沈明烛，那一页是不是在你手上？';
+const SHOT = q.get('shot') === '1';
+const EXTRA = q.get('extra') || '';           // 追加的第二句话，用 | 分隔
+if (!SHOT) document.body.classList.add('debug');
+const log = []; const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const conv = () => w.RP.store.active();
+  const aiMsgs = () => conv().messages.filter(m => m.role === 'ai');
+  async function send(text) {
+    const ta = d.getElementById('chatInput');
+    if (!ta) { P('!! 输入框不存在（没有模型？）'); return; }
+    ta.value = text; ta.dispatchEvent(new w.Event('input', { bubbles: true }));
+    d.getElementById('btnSend').click();
+    const n = aiMsgs().length;
+    let waited = 0;
+    while (waited < 480000 && aiMsgs().length === n) { await wait(1000); waited += 1000; }
+    P('[' + (waited / 1000) + 's] ' + String((aiMsgs().slice(-1)[0] || {}).text || '').slice(0, 300));
+  }
+  (async function () {
+    try {
+      for (let i = 0; i < 80 && !d.querySelector('.res-card'); i++) await wait(200);
+      P('模型来源：' + w.RP.api.mode() + ' | ' + JSON.stringify(w.RP.api.serverInfo ? w.RP.api.serverInfo() : {}));
+      w.RP.app.play(RES);
+      await wait(900);
+      await send(ASK);
+      if (EXTRA) { for (const t of EXTRA.split('|')) { if (t.trim()) await send(t.trim()); } }
+      P('状态：hp=' + conv().hp + '/' + conv().maxHp + ' 推进度=' + conv().progress + '% turn=' + conv().turn);
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

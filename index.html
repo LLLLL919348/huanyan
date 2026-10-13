@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>幻言 · AI 角色扮演</title>
+<meta name="description" content="成年人向 AI 剧情角色扮演陪聊站：选本子、进剧情、被记住。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%230f1118'/%3E%3Ctext x='16' y='22' font-size='17' text-anchor='middle' fill='%234d8dff'%3E%E5%B9%BB%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body data-theme="night" data-bubble="soft">
+
+<div class="app">
+
+  <header class="topbar">
+    <button class="icon-btn only-mobile" id="btnSidebar" title="会话区">
+      <svg viewBox="0 0 24 24" class="ico"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <div class="brand">
+      <div class="brand-mark">幻</div>
+      <div class="brand-text">
+        <strong>幻言</strong>
+        <span>AI 角色扮演 · 陪聊</span>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav">
+      <button class="nav-item" data-view="resources">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H10a2 2 0 0 1 2 2v13a1.6 1.6 0 0 0-1.6-1.6H4z"/><path d="M20 5.5A1.5 1.5 0 0 0 18.5 4H14a2 2 0 0 0-2 2v13a1.6 1.6 0 0 1 1.6-1.6H20z"/></svg>
+        <span>资源</span>
+      </button>
+      <button class="nav-item" data-view="chat">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M20 12a7.5 7.5 0 0 1-7.5 7.5H8L4 22v-4.4A7.5 7.5 0 0 1 12.5 4.5 7.5 7.5 0 0 1 20 12z"/><path d="M9 11h6M9 14h3.5"/></svg>
+        <span>对话</span>
+        <i class="nav-dot" id="navDot"></i>
+      </button>
+      <button class="nav-item" data-view="profile">
+        <svg viewBox="0 0 24 24" class="ico"><circle cx="12" cy="8.5" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.4 7-5.4s6.2 1.8 7 5.4"/></svg>
+        <span>我的</span>
+      </button>
+    </nav>
+
+    <div class="topbar-right">
+      <div class="quota-mini" id="quotaMini" title="今日剩余演绎额度"></div>
+      <button class="icon-btn" id="btnFocusTop" title="全屏沉浸（Esc 退出）" aria-label="全屏沉浸">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M4 9V5a1 1 0 0 1 1-1h4"/><path d="M20 9V5a1 1 0 0 0-1-1h-4"/><path d="M4 15v4a1 1 0 0 0 1 1h4"/><path d="M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
+      </button>
+      <button class="icon-btn" id="btnAdmin" title="内容后台（编辑资源提示词 / 助手人设）">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M4 6h16M4 12h10M4 18h13"/><circle cx="18.5" cy="12" r="2.2"/></svg>
+        <i class="dot-state" id="adminDot"></i>
+      </button>
+      <button class="icon-btn" id="btnThemeQuick" title="切换浅色 / 深色">
+        <svg viewBox="0 0 24 24" class="ico"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="workbench">
+
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <span class="sidebar-title">会话区</span>
+        <button class="mini-btn" id="btnNewChat" title="选择资源开始新的演绎">＋ 新会话</button>
+      </div>
+      <div class="conv-list" id="convList"></div>
+      <div class="sidebar-foot">
+        <span class="dot-ok"></span> 会话仅保存在本机浏览器
+      </div>
+    </aside>
+
+    <main class="main" id="main">
+      <section class="view" id="view-resources" aria-label="资源区"></section>
+      <section class="view" id="view-chat" aria-label="对话区"></section>
+      <section class="view" id="view-profile" aria-label="我的"></section>
+    </main>
+
+  </div>
+
+  <footer class="global-foot">
+    <span>成年人向虚构剧情扮演 · 内容均为虚构，请勿模仿</span>
+    <span class="sep">·</span>
+    <span>本站只提供 AI 陪聊与角色扮演，AI 不具备任何实际操作权限</span>
+    <span class="sep">·</span>
+    <span>不含充值 / 打赏等任何付费入口</span>
+  </footer>
+
+</div>
+
+<div class="toasts" id="toasts"></div>
+<div id="popoverRoot"></div>
+<div id="modalRoot"></div>
+
+<script src="assets/js/resources.js"></script>
+<script src="assets/js/settings.js"></script>
+<script src="assets/js/content-guard.js"></script>
+<script src="assets/js/store.js"></script>
+<script src="assets/js/safety.js"></script>
+<script src="assets/js/acts.js"></script>
+<script src="assets/js/engine.js"></script>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/views-resources.js"></script>
+<script src="assets/js/views-chat.js"></script>
+<script src="assets/js/views-profile.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

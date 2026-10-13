@@ -10,6 +10,19 @@ const STATE_RE = /\{[\s\S]*?\}/;
 const guard = require('./content-guard');
 const compact = require('./prompt-compact');
 
+/* 状态行要求只写在「历史之后那条 system」里时，云端模型的遵守度很低：
+   实测 glm-4-flash 直接调用只有 1/5 会输出 <<<STATE>>>，走站点 /api/chat 更是 0/5
+   —— 状态机制（HP / 好感 / 推进度 / flag）等于全部失效。
+   把同一句要求补在玩家这句话之后（模型最后看到的位置）升到 4/5。
+   只对云端模型补：本机小模型本来遵守得好，多塞一句反而容易被它当台词念出来。 */
+const STATE_REMIND = '（系统：本轮回复的最后另起一行，原样输出这一行；三个数都换成本回合的变化量'
+  + '（hp=本回合扣血数，没扣写 0）：\n'
+  + '<<<STATE {"hp":0,"affinity":好感增减,"progress":推进度增量,"flag":"none","reason":"一句话原因"}>>>）';
+
+function isLocalBase(base) {
+  return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\]|0\.0\.0\.0)(:|\/|$)/i.test(String(base || ''));
+}
+
 function buildMessages(resource, settings, state, history) {
   if (!resource || !resource.prompt) return null;
   const mo = (settings && settings.__model) || {};              // { base, model, compact }
@@ -26,10 +39,14 @@ function buildMessages(resource, settings, state, history) {
   if (hist[hist.length - 1].role !== 'assistant' && hist[hist.length - 1].role !== 'user') return null;
   /* ★ 实时状态放在最后一条独立消息里：模型服务（Ollama/llama.cpp）按「最长公共前缀」复用 KV 缓存，
      状态每轮都变 —— 只要它出现在中段，后面所有内容（输出要求、历史、这一句）每轮都要重算；
-     挪到最后之后，前缀 = 规则 + 历史，基本全部命中缓存，首字延迟能砍掉一大半。 */
-  return [{ role: 'system', content: sys }]
-    .concat(hist.slice(-13))
-    .concat([{ role: 'system', content: buildStateMessage(state, mo) }]);
+     挪到最后之后，前缀 = 规则 + 历史，基本全部命中缓存，首字延迟能砍掉一大半。
+     ★ 云端模型另需在玩家发言后面再点一次名（见 STATE_REMIND）。 */
+  const out = [{ role: 'system', content: sys }].concat(hist.slice(-13));
+  const tail = out[out.length - 1];
+  if (!isLocalBase(mo.base) && tail && tail.role === 'user') {
+    tail.content = tail.content + '\n\n' + STATE_REMIND;
+  }
+  return out.concat([{ role: 'system', content: buildStateMessage(state, mo) }]);
 }
 
 /* 每轮的实时状态 + 本轮要求。
@@ -60,7 +77,12 @@ function buildStateMessage(st, mo) {
     lines.push('不要重复你上一条说过的话：「' + String(st.lastAi).slice(0, 40) + '」');
   }
   lines.push('本轮：2-4 句、120 字内，只写角色的动作与台词，不要输出【】开头的说明或建议。');
-  lines.push('结尾另起一行：<<<STATE {"hp":0,"affinity":1,"progress":6,"flag":"none","aid":null,"reason":"简短"}>>>');
+  /* 三个数必须说清是「本回合的变化量」：实测 glm-4-flash 会把 hp 写成当前血量（20）、
+     progress 写成当前推进度（比如 24），而站点是按增量结算的 —— 结果是每轮白送满血回血、
+     推进度一跳一大截。写清语义后它才按增量填。 */
+  lines.push('结尾另起一行输出状态行，三个数都填「本回合的变化量」：' +
+    'hp 填本回合扣了多少血（没扣就写 0）、affinity 填好感增减、progress 填推进度增量（一般 3-10）：');
+  lines.push('<<<STATE {"hp":0,"affinity":1,"progress":6,"flag":"none","aid":null,"reason":"简短"}>>>');
   return lines.join('\n');
 }
 
@@ -169,6 +191,8 @@ function buildAssistantMessages(settings, history) {
 }
 
 module.exports = {
+  STATE_REMIND: STATE_REMIND,
+  isLocalBase: isLocalBase,
   buildMessages: buildMessages, buildSystemPrompt: buildSystemPrompt, buildStateMessage: buildStateMessage, memoryHint: memoryHint,
   buildAssistantMessages: buildAssistantMessages, buildAssistantSystemPrompt: buildAssistantSystemPrompt,
   ASSISTANT_ID: ASSISTANT_ID

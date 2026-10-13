@@ -1111,8 +1111,11 @@ RP.chat = (function () {
     const beforeProg = conv.progress || 0;
     const beat = (resource.beats || []).filter(function (b) { return b.at === conv.turn; })[0];
     if (beat) pushMsg(conv, { role: 'beat', text: beat.text, meta: { beat: true, key: !!beat.key } });
-    if (holder) { holder.text = r.text; holder.meta = Object.assign({ online: true }, holder.meta, r.ms ? { ms: r.ms } : {}); }
-    else pushMsg(conv, { role: 'ai', text: r.text, meta: Object.assign({ online: true }, r.ms ? { ms: r.ms } : {}) });
+    /* stateRaw：模型这一轮原文里的状态行。必须存下来 —— 下一轮它要作为「历史格式」回到提示词里，
+       否则模型看到的历史是「角色回复不带状态行」，它会照着模仿，状态行从此再也不出现。
+       实测见 tools/check-zhipu-state.js 与 api.js 里 toHistory 的注释。 */
+    if (holder) { holder.text = r.text; holder.stateRaw = r.stateRaw || ''; holder.meta = Object.assign({ online: true }, holder.meta, r.ms ? { ms: r.ms } : {}); }
+    else pushMsg(conv, { role: 'ai', text: r.text, stateRaw: r.stateRaw || '', meta: Object.assign({ online: true }, r.ms ? { ms: r.ms } : {}) });
 
     const parsed = RP.acts.parse(r.text);
     const v = RP.acts.verdict(parsed.acts, r.state || {});

@@ -174,6 +174,16 @@ RP.api = (function () {
     return RP.contentGuard ? RP.contentGuard.applyToPrompt(built, resource) : built;
   }
 
+  /* 状态行要求只放在「历史之后那条 system」里时，云端模型遵守度很低：
+     实测 glm-4-flash 只有 1/5 会输出 <<<STATE>>>，走站点转发更是 0/5 —— 状态机制等于失效。
+     在玩家发言后面再点一次名可升到 4/5。只对云端模型补，本机小模型保持原样。
+     与 server/prompt.js 的 STATE_REMIND / isLocalBase 保持一致。 */
+  const STATE_REMIND = '（系统：本轮回复的最后另起一行，原样输出这一行，只把数值换成本轮结果：\n' +
+    '<<<STATE {"hp":当前血量,"affinity":好感增减,"progress":推进度,"flag":"none","reason":"一句话原因"}>>>）';
+  function isLocalBase(base) {
+    return /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\]|0\.0\.0\.0)(:|\/|$)/i.test(String(base || ''));
+  }
+
   /* 每轮的实时状态：单独一条消息、放在历史之后 —— 前半段（规则）才能被模型服务缓存。
      ★ 刻意写短：这一段紧贴玩家发言，对模型影响最大；写成近千字的"强调清单"会让小模型
        把系统指令当台词念出来（实测踩过）。与 server/prompt.js 的 buildStateMessage 保持一致。 */
@@ -200,7 +210,10 @@ RP.api = (function () {
       if (lastAi) L.push('不要重复你上一条说过的话：「' + String(lastAi).replace(/\s+/g, ' ').slice(0, 40) + '」');
     }
     L.push('本轮：2-4 句、120 字内，只写角色的动作与台词，不要输出【】开头的说明或建议。');
-    L.push('结尾另起一行：<<<STATE {"hp":0,"affinity":1,"progress":6,"flag":"none","aid":null,"reason":"简短"}>>>');
+    /* 三个数必须说清是「本回合的变化量」，否则模型会填当前值（见 server/prompt.js 同处注释） */
+    L.push('结尾另起一行输出状态行，三个数都填「本回合的变化量」：' +
+      'hp 填本回合扣了多少血（没扣就写 0）、affinity 填好感增减、progress 填推进度增量（一般 3-10）：');
+    L.push('<<<STATE {"hp":0,"affinity":1,"progress":6,"flag":"none","aid":null,"reason":"简短"}>>>');
     return L.join('\n');
   }
 
@@ -237,11 +250,26 @@ RP.api = (function () {
     /* 状态行通常独占一行：换成换行符，免得把前后两句粘在一起 */
     return String(text || '').replace(/<{2,3}\s*STATE[\s\S]*?>{2,}/gi, '\n');
   }
+
+  /* 历史里必须保留模型自己吐过的状态行。
+     实测 glm-4-flash（各 3-4 次）：历史里只要有一条「不带状态行」的角色回复，模型就会模仿历史
+     的格式而不遵守指令 —— 状态行命中率 0/3；把那条历史回复补上状态行后 3/3。
+     试过「明确告诉它历史是旧格式」和「给一个收尾示例」，都是 0/3：指令和示例都赢不过模仿。
+     所以每轮把模型原文的状态行存下来，下一轮原样放回历史；早期会话没有记录时用协议里的示例行
+     做格式脚手架（只是格式范例，不是对历史的断言）。 */
+  const STATE_TEMPLATE_LINE = '<<<STATE {"hp":0,"affinity":1,"progress":6,"flag":"none","aid":null,"reason":"简短"}>>>';
+  function toHistory(m) {
+    const role = m.role === 'ai' ? 'assistant' : 'user';
+    let content = String(m.text == null ? '' : m.text);
+    if (role === 'assistant') content += '\n' + (m.stateRaw || STATE_TEMPLATE_LINE);
+    return { role: role, content: content };
+  }
   function parseState(text) {
-    const out = { text: text, state: null };
+    const out = { text: text, state: null, raw: '' };
     STATE_RE.lastIndex = 0;
     const first = STATE_RE.exec(String(text || ''));
     if (!first) return cleanText(out);
+    out.raw = first[0];                                    // 原文留一份，下一轮要放回历史（见 toHistory）
     try {
       /* 键名里的空格先抹掉，否则 " progress" 取不到值 */
       out.state = JSON.parse(first[1].replace(/"\s*([A-Za-z_]+)\s*"\s*:/g, '"$1":'));
@@ -361,7 +389,7 @@ RP.api = (function () {
     const history = (conv.messages || [])
       .filter(function (m) { return m.role === 'ai' || m.role === 'user'; })
       .slice(-12)
-      .map(function (m) { return { role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }; });
+      .map(toHistory);                              // 角色回复后面带回它自己的状态行，见 toHistory 的注释
     const last = opts.silent
       ? '（玩家本轮选择沉默，没有发言。请你继续推进剧情，不要替玩家写台词或决定。）'
       : userText;
@@ -404,7 +432,8 @@ RP.api = (function () {
       text: safe.text,
       blocked: safe.hit,
       via: mode() === 'own' ? 'own' : 'server',
-      state: parsed.state || { hp: 0, affinity: 1, flag: 'none', reason: '模型未返回状态尾注，按中性结算' }
+      state: parsed.state || { hp: 0, affinity: 1, flag: 'none', reason: '模型未返回状态尾注，按中性结算' },
+      stateRaw: parsed.raw || ''
     };
   }
 
@@ -414,13 +443,15 @@ RP.api = (function () {
     const history = (conv.messages || [])
       .filter(function (m) { return m.role === 'ai' || m.role === 'user'; })
       .slice(-12)
-      .map(function (m) { return { role: m.role === 'ai' ? 'assistant' : 'user', content: m.text }; });
+      .map(toHistory);                              // 角色回复后面带回它自己的状态行，见 toHistory 的注释
     const last = opts.silent
       ? '（玩家本轮选择沉默，没有发言。请你继续推进剧情，不要替玩家写台词或决定。）'
       : userText;
+    /* 云端模型对尾部 system 里的状态行要求遵守度低，在玩家这句后面再点一次名 */
+    const lastMsg = { role: 'user', content: isLocalBase(cfg.base) ? last : (last + '\n\n' + STATE_REMIND) };
     const messages = [{ role: 'system', content: buildSystemPrompt(resource, conv, opts) }]
       .concat(history)
-      .concat([{ role: 'user', content: last }])
+      .concat([lastMsg])
       .concat([{ role: 'system', content: buildStateMessage(conv, opts) }]);   // 状态放最后，前半段才能被缓存
 
     /* ① 经本站服务端转发：
@@ -446,7 +477,8 @@ RP.api = (function () {
         text: safe0.text,
         blocked: safe0.hit,
         via: mode() === 'own' ? 'own' : 'server',
-        state: parsed0.state || { hp: 0, affinity: 1, flag: 'none', reason: '模型未返回状态尾注，按中性结算' }
+        state: parsed0.state || { hp: 0, affinity: 1, flag: 'none', reason: '模型未返回状态尾注，按中性结算' },
+        stateRaw: parsed0.raw || ''
       };
     }
 
@@ -479,7 +511,8 @@ RP.api = (function () {
       text: safe.text,
       blocked: safe.hit,
       via: 'client',
-      state: parsed.state || { hp: 0, affinity: 1, flag: 'none', reason: '在线模型未返回状态尾注，按中性结算' }
+      state: parsed.state || { hp: 0, affinity: 1, flag: 'none', reason: '在线模型未返回状态尾注，按中性结算' },
+      stateRaw: parsed.raw || ''
     };
   }
 

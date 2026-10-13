@@ -32,6 +32,27 @@ http.createServer(function (req, res) {
       '含耐心状态=' + /耐心状态/.test(sys) + ' · ' +
       '带密钥=' + hasAuth + ' · 模型=' + (body.model || '') + ' · 玩家说=' + String(lastUser).slice(0, 20) +
       '\n<<<STATE {"hp":0,"affinity":1,"progress":6,"flag":"none","aid":null,"reason":"测试"}>>>';
+    /* 支持 SSE 流式：真实上游都是流式的，站点的流式管线要能拿它端到端验证。
+       以前这里只回一次性 JSON —— 结果是「流式请求拿到空回复」，客户端会当成错误，
+       既没法验证客户端解析，也和真实上游行为不符。 */
+    if (body.stream === true) {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive'
+      });
+      const frames = reply.match(/[\s\S]{1,12}/g) || [];
+      let i = 0;
+      const tick = setInterval(function () {
+        if (i >= frames.length) {
+          clearInterval(tick);
+          res.write('data: [DONE]\n\n');
+          return res.end();
+        }
+        res.write('data: ' + JSON.stringify({ choices: [{ delta: { content: frames[i++] } }] }) + '\n\n');
+      }, 12);
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ choices: [{ message: { role: 'assistant', content: reply } }] }));
   });

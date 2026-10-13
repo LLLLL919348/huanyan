@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!-- 客户端「状态行接力」验收（不碰网络，断言纯客户端逻辑）：
+     第 1 轮模型吐的状态行必须被存到消息上（stateRaw），第 2 轮请求的历史里必须带回它。
+     为什么不用真上游：无头 Edge 的 --virtual-time-budget 会快进虚拟时钟，十几秒的流式响应
+     会被误判成超时（README 里记过这个坑）。这里照 smoke-stream.html 的做法在页面内伪造 SSE。 -->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+let fails = 0;
+function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
+document.getElementById('f').addEventListener('load', function () {
+  const w = this.contentWindow, d = this.contentDocument;
+  w.addEventListener('error', function (e) { log.push('!! error: ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); fails++; });
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+
+  /* 带行为台词与状态行的回复，拆成 12 片流式吐出 */
+  const REPLY = '（他把灯往你这边偏了半寸，替你挡住那道视线）这件事，不该在灯市里说。\n' +
+    '<<<STATE {"hp":0,"affinity":1,"progress":6,"flag":"none","aid":null,"reason":"推进剧情"}>>>';
+  const requests = [];
+  function installFakeStream() {
+    const realFetch = w.fetch;
+    w.fetch = function (url, opts) {
+      if (String(url).indexOf('/api/chat') === -1) return realFetch.apply(w, arguments);
+      try { requests.push(JSON.parse(opts.body)); } catch (e) { }
+      const enc = new w.TextEncoder();
+      const chars = Array.from(REPLY);
+      const per = Math.ceil(chars.length / 12);
+      const parts = [];
+      for (let i = 0; i < chars.length; i += per) parts.push(chars.slice(i, i + per).join(''));
+      let idx = 0;
+      const stream = new w.ReadableStream({
+        start: function (ctrl) { ctrl.enqueue(enc.encode('data: {"t":"","ping":true}\n\n')); },
+        pull: function (ctrl) {
+          return new Promise(function (resolve) {
+            setTimeout(function () {
+              if (idx < parts.length) {
+                ctrl.enqueue(enc.encode('data: ' + JSON.stringify({ t: parts[idx] }) + '\n\n'));
+                idx++; resolve();
+              } else {
+                ctrl.enqueue(enc.encode('data: ' + JSON.stringify({ done: true, text: REPLY, quota: { left: 19, limit: 20 } }) + '\n\n'));
+                ctrl.close(); resolve();
+              }
+            }, 20);
+          });
+        }
+      });
+      return Promise.resolve(new w.Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream; charset=utf-8' } }));
+    };
+    return function () { w.fetch = realFetch; };
+  }
+
+  (async function () {
+    try {
+      for (let i = 0; i < 60 && !d.querySelector('.res-card'); i++) await wait(200);
+      const list = w.RP.resources.playable();
+      const res = list[0];
+      w.RP.app.play(res.id);
+      await wait(800);
+      const restore = installFakeStream();
+
+      async function send(text) {
+        const before = requests.length;
+        const ta = d.getElementById('chatInput'), btn = d.getElementById('btnSend');
+        if (!ta || !btn) return false;
+        ta.value = text;
+        ta.dispatchEvent(new w.Event('input'));
+        btn.click();
+        for (let i = 0; i < 60; i++) {
+          await wait(200);
+          if (requests.length > before && !d.querySelector('#messages .bubble.streaming')) break;
+        }
+        return requests.length > before;
+      }
+
+      P('【第 1 轮：状态行要被存下来】');
+      ok(await send('那一页卷宗在谁手上？'), '第 1 轮的请求发出去了');
+      const conv = w.RP.store.active();
+      const ais = conv.messages.filter(function (m) { return m.role === 'ai' && m.text; });
+      ok(ais.length === 1, '拿到 1 条角色回复（实际 ' + ais.length + '）');
+      const ai1 = ais[0];
+      if (ai1) {
+        P('      消息字段: ' + Object.keys(ai1).join(','));
+        P('      stateRaw = ' + JSON.stringify(ai1.stateRaw));
+        ok(/<<<STATE/i.test(ai1.stateRaw || ''), '状态行被存进了消息（stateRaw）', JSON.stringify(ai1.stateRaw || ''));
+        ok(String(ai1.text).indexOf('<<<STATE') === -1, '气泡文本里看不到状态行（已剥离）');
+      }
+      const probe = w.RP.api.parseState ? w.RP.api.parseState('台词。\n<<<STATE {"hp":0,"affinity":1,"progress":6,"flag":"none","reason":"探针"}>>>') : null;
+      ok(!!probe && /<<<STATE/.test(probe.raw || ''), 'parseState 会返回状态行原文（raw）', JSON.stringify(probe && probe.raw));
+
+      P('【第 2 轮：历史里要带回状态行】');
+      ok(await send('我不要听场面话。那一页上写的是谁的名字？'), '第 2 轮的请求发出去了');
+      const req2 = requests[requests.length - 1];
+      const hist = (req2 && req2.messages) || [];
+      const assistants = hist.filter(function (m) { return m.role === 'assistant'; });
+      ok(assistants.length > 0, '请求历史里带上了角色回复（' + assistants.length + ' 条）');
+      ok(assistants.length > 0 && assistants.every(function (m) { return /<<<STATE/i.test(m.content); }),
+        '每条角色回复后面都带着它自己的状态行（模型唯一肯模仿的格式）',
+        assistants.map(function (m) { return /<<<STATE/i.test(m.content) ? '有' : '无'; }).join(','));
+      if (assistants.length) {
+        const line = /<<<STATE[\s\S]*?>>>/i.exec(assistants[0].content);
+        P('      历史里那条: ' + (line ? line[0].slice(0, 90) : ''));
+      }
+      ok(hist.length && hist[hist.length - 1].role === 'user', '历史最后一条仍是玩家发言（不能让模型接着自己说话）');
+
+      P('【第 3 轮：老会话没有 stateRaw 时用示例行兜底】');
+      const aiLast = w.RP.store.active().messages.filter(function (m) { return m.role === 'ai'; }).slice(-1)[0];
+      if (aiLast) delete aiLast.stateRaw;                       // 模拟旧版本存下来的会话
+      ok(await send('你当年也在场，对吗？'), '第 3 轮的请求发出去了');
+      const req3 = requests[requests.length - 1];
+      const a3 = ((req3 && req3.messages) || []).filter(function (m) { return m.role === 'assistant'; });
+      ok(a3.length > 0 && a3.every(function (m) { return /<<<STATE/i.test(m.content); }),
+        '没有 stateRaw 的历史也被补上状态行（格式脚手架，不让链条断掉）',
+        a3.map(function (m) { return /<<<STATE/i.test(m.content) ? '有' : '无'; }).join(','));
+
+      restore();
+      P('');
+      P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

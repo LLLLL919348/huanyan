@@ -103,10 +103,11 @@ curl -s -m 8 -o /dev/null -w '健康检查 HTTP %{http_code}\n' http://127.0.0.1
 EOF
 chmod +x "$APP_DIR/tools/restart.sh"
 
-echo "=== 4) 收紧密钥文件权限（model.json 里有模型密钥，必须 600）==="
+echo "=== 4) 收紧密钥文件权限（model.json 里有模型密钥、invite.json 里有邀请码明文，都必须 600）==="
 chmod 600 "$ENV_FILE"
 [ -f "$APP_DIR/data/model.json" ] && chmod 600 "$APP_DIR/data/model.json"
-ls -l "$ENV_FILE" "$APP_DIR/data/model.json" 2>/dev/null | awk '{print "  "$1" "$9}'
+[ -f "$APP_DIR/data/invite.json" ] && chmod 600 "$APP_DIR/data/invite.json"
+ls -l "$ENV_FILE" "$APP_DIR/data/model.json" "$APP_DIR/data/invite.json" 2>/dev/null | awk '{print "  "$1" "$9}'
 
 echo "=== 5) 启动服务 ==="
 sudo systemctl restart huanyan.service
@@ -116,7 +117,7 @@ printf '监听: '; ss -tln | grep -E ':80\b' || echo '（未监听！）'
 printf '本机健康: '; curl -s -m 8 -o /dev/null -w 'HTTP %{http_code}\n' http://127.0.0.1/api/health || echo '失败'
 
 echo "=== 5) 复核：后台对访客必须 404 ==="
-for p in /admin /admin/admin.js /api/stats /api/export; do
+for p in /admin /admin/admin.js /api/stats /api/export /api/invite-admin; do
   printf '  %-18s → 本机 %s\n' "$p" "$(curl -s -m 6 -o /dev/null -w '%{http_code}' http://127.0.0.1$p)"
 done
 echo "  提示：以上是本机（回环）访问，设计上放行；从外网复测应为 404 —— 用 tools/check-exposure.js 在本地跑。"

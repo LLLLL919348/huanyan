@@ -181,7 +181,7 @@ const CHAT = { resourceId: '__assistant', assistant: true, messages: [{ role: 'u
     r = await adm('GET', '/api/invite-admin');
     ok(r.code === 200 && r.json && r.json.invite, '带对令牌可读', r.code);
     r = await req('GET', '/api/invite-admin');
-    ok(r.code === 403 || r.code === 200, '不带令牌（本机）', r.code + '（本机默认放行，设计如此）');
+    ok(r.code === 403, '不带令牌（即使来自本机）也被拒（403）', r.code);
   } else {
     r = await req('GET', '/api/invite-admin');
     ok(r.code === 200 || r.code === 403, '未配令牌时本机可读', r.code + '（设计如此；部署后从外网必须 404）');

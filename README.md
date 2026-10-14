@@ -454,10 +454,23 @@ powershell -File tools/run-smoke.ps1 check-state-history   # 无头浏览器，�
 #   （需要跟服务一样的 ADMIN_TOKEN；跑完会把邀请制恢复成"未开启"，不留副作用）
 ADMIN_TOKEN=… node tools/check-invite.js http://127.0.0.1:5599
 
+# 外部视角（站在公网陌生人位置）：无码 403 / 伪造凭证 403 / 外部读不到码列表 / 持码可聊
+node tools/check-invite-outside.js http://8.138.170.154 <邀请码>
+
 # 前端真站点验收：① 没开时不打扰 ② 开了没凭证时输入框消失 ③ 锁定态发消息不发请求
 #   ④ 填对码后恢复 ⑤ 带着凭证头真的能发出去 ⑥ 码被停用后重新载入又锁上
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/run-smoke.ps1 check-invite-ui 150000 5599
+
+# 后台「邀请码」页：把 admin.js 里那一段抽出来配 DOM 桩跑（不需要浏览器）
+node tools/check-admin-invite.js
 ```
+
+> 后台页为什么用 DOM 桩而不是无头浏览器：本机这套 headless Edge 里，
+> `admin/index.html` 的 iframe `load` 与外层启动链（health → 资源 → 设置）都走不完，
+> 截图里资源和设置两页是空的 —— 拿它当判据既会假失败也会假通过。
+> 所以这一页的验收改成"抽出真实代码 + 最小 DOM 桩 + 假服务端"，
+> 断言它写进页面什么、点按钮发什么请求。顺带给后台补了一处启动异常上报：
+> 以前 boot() 中途抛异常会静默停住（页面看着正常、内容全空），现在会写进右上角健康条。
 
 ### 服务器上的端口只有两个
 
@@ -854,7 +867,10 @@ powershell -File tools/shoot.ps1 chat  # 只抓某个状态
 #   check-beats.html    剧情节点卡触发：推进度提前触发 / 回合兜底 / 不重复 / 一次只放一张 / key 卡早于通关线
 #   check-act-rules.html 裁决与扣血：警告不扣血（哪怕写了数字）、惩戒越界才扣、没行为台词才提示作废
 #   check-invite.js     邀请制端到端（黑盒 HTTP）：无码/错码/对码/停用/过期/删除/令牌校验，33 项断言
+#   check-invite-outside.js 邀请制外部视角：站在公网陌生人位置复测（无码 403 / 伪造凭证 403 / 持码 200）
 #   check-invite-ui.html 邀请制前端（真站点）：锁定面板、输入框消失、发消息不发请求、通过后恢复
+#   check-admin-invite.js 后台「邀请码」页逻辑：把 admin.js 里那一段抽出来配 DOM 桩跑，
+#                        验概览/表格四态/生成/停用/删除/复制/报错提示（21 项）
 #   check-state-carry.js      真上游的状态行命中率：空历史 / 历史带状态行 / 旧会话 / 示例行兜底
 #   check-zhipu-state.js      云端模型协议遵守度对照实验（O 修复前 / A 修复后 / F1-F3 四种补救方案）
 #   fake-model.js       测试替身：OpenAI 兼容端点，支持 SSE 流式，回复里固定带状态行（node tools/fake-model.js 5699）

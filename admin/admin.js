@@ -1971,7 +1971,32 @@
     });
   }
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
+  /* ★ 启动异常必须说话。
+     实测过一种很难查的情况：后台某处一抛异常，boot() 就停在中途 ——
+     页面看起来"能用"（静态 HTML 都在、资源和设置两页却是空的），
+     既不报错也不提示，只能靠人觉得"怎么怪怪的"。
+     这里把 boot 包一层，任何异常都写进健康条与页面标题，让"没启动起来"一眼可见。 */
+  function bootSafely() {
+    try {
+      const r = boot();
+      if (r && typeof r.then === 'function') {
+        r.catch(function (e) { reportBootError(e); });
+      }
+    } catch (e) {
+      reportBootError(e);
+    }
+  }
+  function reportBootError(e) {
+    const msg = (e && (e.message || e)) || '未知错误';
+    try {
+      const h = document.getElementById('healthStat');
+      if (h) h.textContent = '后台启动失败：' + msg + '（看浏览器控制台拿到完整堆栈）';
+      document.title = '启动失败 · 幻言后台';
+    } catch (e2) { }
+    try { console.error('[后台启动失败]', e); } catch (e2) { }
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bootSafely);
+  else bootSafely();
 
 })();

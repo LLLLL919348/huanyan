@@ -238,13 +238,16 @@ function logLine(method, pathname, result) {
 }
 
 /* 只有这些前缀可以对外提供静态文件：站点资源、封面图、后台 UI 外壳。
-   /data（含 model.json 密钥）、/server（源码）、根目录杂项一律拒绝。 */
-function isPublicAsset(p) {
+   /data（含 model.json 密钥、invite.json 邀请码）、/server（源码）、根目录杂项一律拒绝。
+   /tools/ 下的验收页只对本机开放 —— 传真实的 req 而不是伪造一个回环 socket：
+   部署时虽然不传 tools/，但"本机才放行"这条规则必须按真实来源判断，不能靠"反正没传"，
+   否则哪天顺手把 tools 放上去，验收页连同内联数据就公开了。 */
+function isPublicAsset(p, req) {
   if (p.indexOf('/assets/') === 0) return true;
   if (p.indexOf('/uploads/') === 0) return true;
   if (p.indexOf('/admin/') === 0) return true;
   if (p === '/favicon.ico') return true;
-  if (p.indexOf('/tools/') === 0) return sec.isLocal({ socket: { remoteAddress: '127.0.0.1' } }) || process.env.DEV_TOOLS === '1';
+  if (p.indexOf('/tools/') === 0) return (req ? sec.isLocal(req) : false) || process.env.DEV_TOOLS === '1';
   return false;
 }
 
@@ -1270,7 +1273,7 @@ const server = http.createServer(function (req, res) {
 
   /* 3) 其余按文件返回：只放行白名单目录 */
   if (hasTraversal(pathname)) return denyStatic(req, res, pathname);
-  if (!isPublicAsset(pathname)) return denyStatic(req, res, pathname);
+  if (!isPublicAsset(pathname, req)) return denyStatic(req, res, pathname);
   serveStatic(req, res, pathname);});
 
 server.on('error', function (e) {

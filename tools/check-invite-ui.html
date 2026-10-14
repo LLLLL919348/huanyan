@@ -25,7 +25,10 @@ const log = []; const P = s => { log.push(s); document.getElementById('out').tex
 let fails = 0;
 function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
 
-const TOKEN = 'dev-token-invite-check';       // 与启动服务时的 ADMIN_TOKEN 一致
+/* 管理令牌：默认是本地开发服务那一个；也可以用 ?token=xxx 指到别的部署上
+   （线上跑法：先开一次 SSH 隧道，再用 ?token=… 指过去）。
+   ★ 这个文件在 tools/ 下、只对本机放行，不要把线上令牌写进这里。 */
+const TOKEN = new URLSearchParams(location.search).get('token') || 'dev-token-invite-check';
 /* 管理接口不求人：每一步都断言成功，失败就当场抛错 —— 不然"没开关成功"会被当成
    "邀请制没生效"，最后查半天是令牌写错了（第一版就踩了）。 */
 async function admin(body) {

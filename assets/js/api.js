@@ -12,6 +12,74 @@ RP.api = (function () {
   /* 服务端模型：站长在 data/model.json（或 MODEL_* 环境变量）里配一次，所有人共用，
      密钥不出服务端；额度按访客每日 30 次。访客也可以自带 key 直连（仅在本地/自用时有意义）。 */
   let server = { serverModel: false, model: '', dailyQuota: 30, quota: null };
+  /* 邀请制：本站可以被人随便看到，但「开口」需要邀请码。真正的判定在服务端，
+     这里只保存服务端告诉我们的状态，用来决定界面显示什么。 */
+  let gate = { checked: false, enabled: false, unlocked: true, days: 90, exp: 0, reason: '' };
+
+  /* 兑换成功后服务端会把签名凭证写进 HttpOnly Cookie（JS 读不到，也无法伪造），
+     同时把凭证原文回给我们。这里把它记在本地作为兜底：某些浏览器/隐私模式下
+     第三方 Cookie 策略会把 Cookie 丢掉，那就靠 x-invite-grant 头带上同一张凭证。
+     两种途径服务端都认，判定逻辑完全一致。 */
+  const GRANT_KEY = 'rp_invite_grant';
+  function readGrant() {
+    try { return localStorage.getItem(GRANT_KEY) || ''; } catch (e) { return ''; }
+  }
+  function writeGrant(token, exp) {
+    try {
+      if (token) localStorage.setItem(GRANT_KEY, token);
+      if (exp) localStorage.setItem(GRANT_KEY + '_exp', String(exp));
+    } catch (e) { /* 隐私模式：只靠 Cookie */ }
+  }
+  function clearGrant() {
+    try { localStorage.removeItem(GRANT_KEY); localStorage.removeItem(GRANT_KEY + '_exp'); } catch (e) { }
+  }
+  function grantHeader() {
+    const t = readGrant();
+    return t ? { 'x-invite-grant': t } : {};
+  }
+  function applySession(d) {
+    if (!d || !d.invite) return gate;
+    gate = {
+      checked: true,
+      enabled: d.invite.enabled === true,
+      unlocked: d.invite.unlocked === true,
+      days: Number(d.invite.days) || 90,
+      exp: Number(d.invite.exp) || 0,
+      reason: d.invite.reason || ''
+    };
+    return gate;
+  }
+  /* 每次打开页面问一次：本站现在要不要邀请码、我这台设备算不算已通过 */
+  async function loadSession() {
+    try {
+      const r = await fetch('/api/session', { cache: 'no-store', headers: grantHeader() });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d && d.ok) { applySession(d); return gate; }
+    } catch (e) { /* 没有后端（file:// 或后端未起）就不启用准入 */ }
+    gate = { checked: true, enabled: false, unlocked: true, days: 90, exp: 0, reason: '' };
+    return gate;
+  }
+  /* 提交邀请码：服务端校验，成功则本地记下凭证 */
+  async function redeemInvite(code) {
+    const r = await fetch('/api/invite', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, grantHeader()),
+      body: JSON.stringify({ code: String(code || '').trim() })
+    });
+    const d = await r.json().catch(function () { return null; });
+    if (!r.ok || !d || !d.ok) {
+      const msg = (d && d.error) || ('HTTP ' + r.status);
+      throw new Error(msg);
+    }
+    writeGrant(d.token || '', d.exp || 0);
+    gate = { checked: true, enabled: true, unlocked: true, days: d.days || 90, exp: d.exp || 0, reason: '' };
+    return gate;
+  }
+  function inviteInfo() { return gate; }
+  /* 本站是不是「邀请制且本机还没通过」。后端不可用时一律返回 false：
+     真站点永远有后端；没有后端说明是在本地用 file:// 自己看，不该把自己锁在外面。 */
+  function locked() { return !!(gate.checked && gate.enabled && !gate.unlocked); }
 
   /* 服务端额度是真额度（security.js 的 consumeQuota 按访客 cookie 计数），客户端这份只是镜像。
      以前两套各记各的，日切边界又不同 —— 实测出现过输入框上方左边「剩余 19/20」、
@@ -25,12 +93,17 @@ RP.api = (function () {
   function serverInfo() { return server; }
   async function loadServerModel() {
     try {
-      const r = await fetch('/api/model', { cache: 'no-store' });
+      const r = await fetch('/api/model', { cache: 'no-store', headers: grantHeader() });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const d = await r.json();
       if (d && d.ok) {
         server = { serverModel: !!d.serverModel, model: d.model || '', dailyQuota: d.dailyQuota || 30, quota: d.quota || null };
         mirrorQuota(server.quota);
+        /* /api/model 也带邀请制开关：万一本设备拿不到 /api/session（极老的浏览器），
+           这里至少能知道「本站是邀请制」，界面就会给出邀请码入口而不是干等着报错。 */
+        if (d.inviteEnabled === true && !gate.checked) {
+          gate = { checked: true, enabled: true, unlocked: false, days: 90, exp: 0, reason: '' };
+        }
       }
     } catch (e) { /* 没有后端就保持关闭 */ }
     return server;
@@ -408,7 +481,9 @@ RP.api = (function () {
     let res;
     try {
       res = await fetch('/api/chat', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, grantHeader()),
+        body: JSON.stringify(payload)
       });
     } catch (e) { return null; }
     if (!res.ok || !res.body || !res.body.getReader) return null;
@@ -469,8 +544,9 @@ RP.api = (function () {
           · 用户自己配了模型 → 带上他的配置（不受浏览器跨域限制，不占站内额度）
           · 否则用站长的模型（默认，计每日额度） */
     /* 浏览器直连需要客户端自己拼系统提示词；服务端对访客不下发 resource.prompt，
-       这种情况下自动回退到"经本站转发"（提示词由服务端组装，功能不打折）。 */
-    const useProxy = mode() === 'server' || (mode() === 'own' && (!cfg.direct || !resource.prompt));
+       这种情况下自动回退到"经本站转发"（提示词由服务端组装，功能不打折）。
+       ★ 邀请制开启且本机未通过时也强制走转发：直连会整个绕过服务端准入。 */
+    const useProxy = mode() === 'server' || (mode() === 'own' && (!cfg.direct || !resource.prompt || gate.enabled));
     if (useProxy) {
       const payload = { resourceId: resource.id, state: serverState(conv, opts), messages: history };
       if (mode() === 'own') {
@@ -478,7 +554,7 @@ RP.api = (function () {
       }
       const r = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: Object.assign({ 'Content-Type': 'application/json' }, grantHeader()),
         body: JSON.stringify(payload)
       });
       const d = await r.json().catch(function () { return null; });
@@ -553,12 +629,15 @@ RP.api = (function () {
     const history = [
       { role: 'user', content: String(text || '').slice(0, 2000) }
     ];
-    /* ① 经本站转发（服务端自己组装助手的系统提示词） */
-    if (mode() !== 'own' || !cfg.direct) {
+    /* ① 经本站转发（服务端自己组装助手的系统提示词）
+       ★ 邀请制开启时一律走转发：助手也是对话，同样要过准入 */
+    if (mode() !== 'own' || !cfg.direct || gate.enabled) {
       const payload = { resourceId: ASSISTANT_ID, assistant: true, messages: history };
       if (mode() === 'own') payload.userModel = { base: cfg.base, key: cfg.key, model: cfg.model, temp: cfg.temp };
       const r = await fetch('/api/chat', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, grantHeader()),
+        body: JSON.stringify(payload)
       });
       const d = await r.json().catch(function () { return null; });
       if (!r.ok || !d || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
@@ -596,6 +675,7 @@ RP.api = (function () {
     parseState: parseState,
     testConnection: testConnection, sanitize: sanitize, globalRules: globalRules,
     loadServerModel: loadServerModel, loadQuota: loadQuota, serverReady: serverReady, serverInfo: serverInfo,
+    loadSession: loadSession, redeemInvite: redeemInvite, inviteInfo: inviteInfo, locked: locked, clearGrant: clearGrant,
     mode: mode, ownReady: ownReady, PROVIDERS: PROVIDERS, FREE_TIERS: FREE_TIERS
   };
 })();

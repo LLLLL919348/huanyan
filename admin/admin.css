@@ -453,3 +453,10 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .stats-bar:hover i{background:linear-gradient(180deg,#6ea4ff,#1c56bd)}
 .stats-bar span{font-size:10px;color:var(--ink-3);margin-top:4px;font-family:var(--mono)}
 .stats-legend{margin-top:8px;font-size:11.5px;color:var(--ink-3)}
+
+/* ---------- 邀请码 ---------- */
+.inv-code{display:inline-block;padding:3px 7px;margin:2px 2px 2px 0;border:1px solid rgba(47,111,224,.35);
+  border-radius:6px;background:rgba(47,111,224,.06);color:#2f6fe0;font-family:var(--mono);font-size:12px;
+  letter-spacing:.06em;cursor:pointer}
+.inv-code:hover{background:rgba(47,111,224,.14)}
+#inviteMade .note{font-size:12px;line-height:2}

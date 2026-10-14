@@ -1710,6 +1710,150 @@
     return { init: init, info: info };
   })();
 
+  /* ------------------------------ 邀请码 ------------------------------ */
+  /* 准入开关 + 邀请码生成 / 停用 / 删除。判定全在服务端（server/invite.js），
+     这个页只是入口：改完立刻生效，不需要重启服务。 */
+  const inviteTab = (function () {
+    let data = { enabled: false, sessionDays: 90, codes: [] };
+
+    function fmtTime(ts) {
+      if (!ts) return '—';
+      const d = new Date(Number(ts));
+      const p = function (n) { return n < 10 ? '0' + n : '' + n; };
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    const STATE_TEXT = { active: '可用', off: '未启用', disabled: '已停用', expired: '已过期' };
+
+    function renderKv() {
+      const now = Date.now();
+      const live = data.codes.filter(function (c) { return c.state === 'active'; }).length;
+      const totalUse = data.codes.reduce(function (a, c) { return a + (c.used || 0); }, 0);
+      const rows = [
+        ['邀请制', data.enabled ? '★ 已开启（浏览公开，对话需邀请码）' : '未开启（所有人可对话）'],
+        ['有效邀请码', live + ' 个 / 共 ' + data.codes.length + ' 个'],
+        ['累计对话轮数（按码）', totalUse + ' 轮'],
+        ['访客凭证有效期', data.sessionDays + ' 天'],
+        ['数据文件', 'data/invite.json（仅服务端可读）'],
+        ['当前时间', fmtTime(now)]
+      ];
+      $('#inviteKv').innerHTML = rows.map(function (r) {
+        return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(String(r[1])) + '</dd>';
+      }).join('');
+    }
+
+    function renderTable() {
+      const box = $('#inviteTable');
+      if (!data.codes.length) {
+        box.innerHTML = '<p class="note">还没有生成过邀请码。</p>';
+        return;
+      }
+      const head = ['邀请码', '状态', '备注', '有效期至', '对话轮数', '最后使用', '操作'];
+      box.innerHTML = '<table class="mini-table"><thead><tr>' +
+        head.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') +
+        '</tr></thead><tbody>' +
+        data.codes.map(function (c) {
+          return '<tr>' +
+            '<td><code class="inv-code" data-code="' + esc(c.code) + '" title="点击复制">' + esc(c.code) + '</code></td>' +
+            '<td>' + esc(STATE_TEXT[c.state] || c.state) + '</td>' +
+            '<td>' + esc(c.note || '—') + '</td>' +
+            '<td>' + esc(c.expiresAt ? fmtTime(c.expiresAt) : '永久') + '</td>' +
+            '<td>' + esc(String(c.used || 0)) + '</td>' +
+            '<td>' + esc(c.lastUsedAt ? fmtTime(c.lastUsedAt) : '—') + '</td>' +
+            '<td><button class="btn btn-sm" data-inv="toggle" data-id="' + esc(c.id) + '">' +
+            (c.disabled ? '恢复' : '停用') + '</button> ' +
+            '<button class="btn btn-sm" data-inv="del" data-id="' + esc(c.id) + '">删除</button></td>' +
+            '</tr>';
+        }).join('') + '</tbody></table>';
+    }
+
+    function apply(d) {
+      if (!d || !d.invite) return;
+      data = d.invite;
+      const cb = $('#inviteEnabled');
+      if (cb) cb.checked = data.enabled === true;
+      const sd = $('#inviteSessionDays');
+      if (sd) sd.value = data.sessionDays;
+      $('#inviteHint').textContent = data.enabled
+        ? '已开启 · 有效码 ' + data.codes.filter(function (c) { return c.state === 'active'; }).length + ' 个'
+        : '未开启 · 开启后对话将被邀请码拦住';
+      renderKv();
+      renderTable();
+    }
+
+    function info() {
+      return API.get('/api/invite-admin').then(apply).catch(function (e) {
+        $('#inviteHint').textContent = '读取失败：' + e.message;
+      });
+    }
+    function post(body, okMsg) {
+      return API.post('/api/invite-admin', body).then(function (d) {
+        apply(d);
+        if (okMsg) toast(okMsg, 'ok');
+        return d;
+      }).catch(function (e) { toast('操作失败：' + e.message, 'err'); });
+    }
+
+    function create() {
+      const count = Math.max(1, Math.min(50, Number($('#inviteCount').value) || 1));
+      const days = Number($('#inviteDays').value);
+      post({ action: 'create', count: count, days: isNaN(days) ? 30 : days, note: $('#inviteNote').value || '' },
+        '已生成 ' + count + ' 个邀请码').then(function (d) {
+          if (!d || !d.made) return;
+          $('#inviteMade').innerHTML = '<div class="note" style="margin-top:12px">刚生成的码（点一下复制）：<br>' +
+            d.made.map(function (c) {
+              return '<code class="inv-code" data-code="' + esc(c) + '" title="点击复制">' + esc(c) + '</code>';
+            }).join(' ') + '</div>';
+          $('#inviteNote').value = '';
+        });
+    }
+
+    function bindTable() {
+      $('#inviteTable').addEventListener('click', function (e) {
+        const code = e.target.closest('.inv-code');
+        if (code) {
+          const v = code.dataset.code || '';
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(v).then(function () { toast('已复制：' + v, 'ok'); },
+              function () { toast('复制失败，请手动选中', 'err'); });
+          } else { toast('请手动选中复制：' + v, ''); }
+          return;
+        }
+        const b = e.target.closest('[data-inv]');
+        if (!b) return;
+        const id = b.dataset.id;
+        const item = data.codes.filter(function (c) { return c.id === id; })[0];
+        if (!item) return;
+        if (b.dataset.inv === 'del') {
+          if (!confirm('删除邀请码 ' + item.code + '？\n已经用这个码通过验证的人会立刻失效，需要重新输入新的码。')) return;
+          post({ action: 'delete', id: id }, '已删除，该码发出的凭证已失效');
+        } else {
+          post({ action: 'update', id: id, disabled: !item.disabled },
+            item.disabled ? '已恢复' : '已停用（已发出的凭证同时失效）');
+        }
+      });
+    }
+
+    function init() {
+      const cb = $('#inviteEnabled');
+      if (cb) cb.addEventListener('change', function () {
+        post({ action: 'toggle', enabled: cb.checked },
+          cb.checked ? '邀请制已开启 —— 现在只有持邀请码的人能对话' : '邀请制已关闭 —— 所有人可对话');
+      });
+      const c = $('#btnInviteCreate');
+      if (c) c.addEventListener('click', create);
+      const s = $('#btnInviteSaveCfg');
+      if (s) s.addEventListener('click', function () {
+        const days = Math.max(1, Math.min(3650, Number($('#inviteSessionDays').value) || 90));
+        post({ action: 'update', sessionDays: days }, '访客凭证有效期已改为 ' + days + ' 天');
+      });
+      const r = $('#btnInviteReload');
+      if (r) r.addEventListener('click', info);
+      bindTable();
+    }
+
+    return { init: init, info: info };
+  })();
+
   /* ------------------------------ 标签页 ------------------------------ */
   let activeTab = 'resources';
   function switchTab(name) {
@@ -1722,6 +1866,7 @@
     $$('.page').forEach(function (p) { p.classList.toggle('is-active', p.id === 'page-' + name); });
     if (name === 'backup') backupTab.info();
     if (name === 'stats') statsTab.info();
+    if (name === 'invite') inviteTab.info();
   }
 
   /* ------------------------------ 访问统计 ------------------------------ */
@@ -1788,6 +1933,7 @@
     setTab.init();
     backupTab.init();
     statsTab.init();
+    inviteTab.init();
     $('#tabs').addEventListener('click', function (e) {
       const t = e.target.closest('.tab');
       if (t) switchTab(t.dataset.tab);
@@ -1805,7 +1951,7 @@
       /* 支持 /admin?tab=settings 这样的直链（也方便自动化截图核对） */
       const qs = new URLSearchParams(location.search);
       const want = qs.get('tab');
-      if (want && ['resources', 'settings', 'backup'].indexOf(want) !== -1) switchTab(want);
+      if (want && ['resources', 'settings', 'backup', 'stats', 'invite'].indexOf(want) !== -1) switchTab(want);
       /* ?focus=<区块 id / 字段名>：载入后把该区块滚进视野（方便直链与自动化截图） */
       const focus = qs.get('focus');
       if (focus) {

@@ -541,7 +541,18 @@ RP.chat = (function () {
     if (!conv || !box) return;
     const resource = conv.resourceId ? RP.resources.byId(conv.resourceId) : null;
 
-    if (conv.muted) {
+    if (RP.invite.locked()) {
+      /* ★ 邀请制：本站谁都能看，但「开口」要有邀请码。这是所有分支里的第一道 ——
+         没通过就只给这一块，不显示输入框、不显示额度，也不显示"去配置模型"（那是下一步的事）。 */
+      const gate = RP.invite.info();
+      box.innerHTML = '<div class="locked-panel invite"><h4>本站为邀请制</h4>' +
+        '<p>所有本子、角色与设定都可以随便看；<b>和角色对话需要一个邀请码</b>。' +
+        '邀请码由站长发放，填一次就够了 —— 这台设备会被记住 ' + gate.days + ' 天。</p>' +
+        (gate.reason ? '<p class="hint-strong">上次的验证没通过：' + RP.util.esc(gate.reason) + '</p>' : '') +
+        '<p class="hint-2">还没有邀请码？先去左栏「资源」里逛逛，看看有没有想玩的本子。</p>' +
+        '<div class="row"><button class="btn primary" id="btnInviteOpen">输入邀请码</button>' +
+        '<button class="btn" data-goto="resources">先去逛逛</button></div></div>';
+    } else if (conv.muted) {
       box.innerHTML = '<div class="locked-panel"><h4>你已被禁言</h4>' +
         '<p>状态值归零，角色已经对你下达处刑，本场演绎终止。只能重新开始，或使用「重启令牌」解禁。</p>' +
         '<div class="row"><button class="btn primary" id="btnRestart2">重新开始</button>' +
@@ -751,6 +762,8 @@ RP.chat = (function () {
     });
     const silent = box.querySelector('#btnSilent');
     if (silent) silent.addEventListener('click', function () { silentTurn(conv, resource); });
+    const invOpen = box.querySelector('#btnInviteOpen');
+    if (invOpen) invOpen.addEventListener('click', function () { RP.invite.open(); });
     const asst = box.querySelector('#btnAssistant');
     if (asst) asst.addEventListener('click', function () {
       RP.store.get().activeConv = 'conv-assistant';
@@ -906,6 +919,9 @@ RP.chat = (function () {
   async function sendMessage(conv, resource, text, opts) {
     opts = opts || {};
     if (typing) return;
+    /* 邀请制：界面已经锁住了，这里再兜一次 —— 免得有别的路径（沉默回合、快捷键）
+       把请求发到服务端换来一句 403 报错。 */
+    if (RP.invite.locked()) { RP.invite.open(); return; }
     if (conv.muted || conv.paused || conv.left) return;    const d = draftOf(conv);
     const items = (opts.silent || conv.kind === 'assistant') ? [] : d.items.slice();
     if (!text && !items.length && !opts.silent) return;   // 沉默回合允许空文本

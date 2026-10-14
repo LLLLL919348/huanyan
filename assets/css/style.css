@@ -1448,6 +1448,14 @@ body[data-focus="1"] #btnFocusTop{display:none;}   /* 沉浸时顶栏本来就�
 .rule-group li::before{content:"·";position:absolute;left:4px;color:var(--text-3);}
 .locked-panel.muted{border-color:rgba(168,132,255,.42);background:rgba(168,132,255,.07);}
 body[data-mode="light"] .locked-panel.muted{background:rgba(113,84,207,.07);}
+/* 邀请制：不是"出错了"，是"还没到开门时间" —— 用中性偏蓝的调子，不用红色告警色 */
+.locked-panel.invite{border-color:var(--accent-line);background:var(--accent-soft);}
+.locked-panel.invite h4{color:var(--accent-2);}
+body[data-mode="light"] .locked-panel.invite{background:rgba(47,111,224,.06);}
+/* 顶栏的邀请码入口：锁着的时候是显眼的蓝，通过之后缩成一个安静的状态标记 */
+.invite-mini{gap:6px;}
+.invite-mini .ico{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.invite-mini.ok{color:var(--text-3);border-color:var(--line);background:transparent;}
 .bubble.silent{opacity:.92;}
 
 /* ---------- 6.7 道具：输入框右上角引用 ---------- */

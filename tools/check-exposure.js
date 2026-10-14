@@ -126,12 +126,14 @@ if (BASE) {
   console.log('=== ⑤ 黑盒探测：' + BASE + ' ===');
   const MUST_BLOCK = [
     '/data/model.json', '/data/settings.json', '/data/quota.json', '/data/stats.json', '/data/server-error.log',
-    '/server/server.js', '/server/security.js', '/server/prompt.js', '/server/stats.js',
+    /* 邀请码明文就在这个文件里 —— 等于门钥匙，对外必须拿不到 */
+    '/data/invite.json',
+    '/server/server.js', '/server/security.js', '/server/prompt.js', '/server/stats.js', '/server/invite.js',
     '/README.md', '/README', '/docs/项目计划书.html', '/.git/config', '/.gitignore', '/package.json',
     '/data/uploads/../model.json',
     /* 后台：公布后对访客必须 404（连"这里有个后台"都不暴露） */
     '/admin', '/admin/', '/admin/index.html', '/admin/admin.js', '/admin/admin.css',
-    '/api/stats', '/api/export'
+    '/api/stats', '/api/export', '/api/invite-admin'
   ];
   /* /tools/ 是"仅本机放行"（server.js 里 isLocal 判断）—— 从本机探测必然 200，
      要从外部复测才有意义，所以单独列出来并注明。 */
@@ -158,7 +160,7 @@ if (BASE) {
     console.log('  —— 必须拒绝（403/404）——');
     /* 从本机探测时，后台类路径在设计中就是放行的（本机/隧道 = 机主）——
        这些项要等部署后从外网再跑一次才有判据，所以本机探测时只提示、不判失败。 */
-    const ADMIN_PATHS = ['/admin', '/admin/', '/admin/index.html', '/admin/admin.js', '/admin/admin.css', '/api/stats', '/api/export'];
+    const ADMIN_PATHS = ['/admin', '/admin/', '/admin/index.html', '/admin/admin.js', '/admin/admin.css', '/api/stats', '/api/export', '/api/invite-admin'];
     for (const p of MUST_BLOCK) {
       const r = await probe(p);
       if (FROM_LOOPBACK && ADMIN_PATHS.indexOf(p) > -1 && r.code === 200) {

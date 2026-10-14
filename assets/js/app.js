@@ -382,6 +382,9 @@ RP.app = (function () {
       toast('选择一张角色卡，点击两次「游玩」即可开启新会话');
     });
     document.getElementById('btnThemeQuick').addEventListener('click', toggleMode);
+    /* 邀请制入口：不锁任何浏览功能，只在「要开口」的地方拦住 */
+    const inv = document.getElementById('btnInvite');
+    if (inv) inv.addEventListener('click', function () { RP.invite.open(); });
     const ft = document.getElementById('btnFocusTop');
     if (ft) ft.addEventListener('click', function () {
       if (RP.store.get().ui.view !== 'chat') { setView('chat'); }
@@ -457,11 +460,14 @@ RP.app = (function () {
     }
   }
 
-  /* 启动顺序：设置 → 资源 → 渲染 */
+  /* 启动顺序：设置 → 邀请制 → 资源 → 渲染 */
   async function boot() {
     await RP.settings.load();
     RP.store.syncQuota();
     await RP.api.loadServerModel();
+    /* 邀请制放在渲染之前问：锁着的话，对话区第一次画出来就是"要邀请码"，
+       不会先闪一下输入框再被替换掉。没有后端时这一步自动变成"不启用"。 */
+    await RP.invite.load();
     await RP.data.load();
     RP.store.reseedAssistant();
     applySiteTexts();
@@ -469,7 +475,10 @@ RP.app = (function () {
     init();
     if (backend) {
       const si = RP.api.serverInfo();
-      if (si.serverModel) {
+      const gate = RP.invite.info();
+      if (gate.enabled && !gate.unlocked) {
+        toast('本站为<b>邀请制</b>：内容随便看，对话需要邀请码（点右上角「邀请码」输入）', 'warn');
+      } else if (si.serverModel) {
         toast('已连接后端 · 模型由本站提供（<b>' + RP.util.esc(si.model) + '</b>，每日 ' + si.dailyQuota + ' 次）', 'ok');
       } else {
         toast('已连接后端 · 内容由服务端管理', 'ok');

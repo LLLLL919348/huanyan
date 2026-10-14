@@ -24,6 +24,7 @@
     <button class="tab" data-tab="settings">全局设置</button>
     <button class="tab" data-tab="backup">数据备份</button>
     <button class="tab" data-tab="stats">访问统计</button>
+    <button class="tab" data-tab="invite">邀请码</button>
   </nav>
 
   <div class="topbar-right">
@@ -281,6 +282,59 @@
       <fieldset class="card">
         <legend>关于这份统计</legend>
         <p class="note">只记数量，不记 IP、不记 User-Agent、不记对话内容。访客去重用的是「匿名 cookie + 当日盐」的哈希，换日即失效，无法跨天追踪同一个人。数据存在 <code>data/stats.json</code>，保留 120 天。</p>
+      </fieldset>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 邀请码 ============================ -->
+<section class="page" id="page-invite">
+  <div class="actionbar actionbar-slim">
+    <div class="actionbar-info"><strong>邀请码准入</strong><span class="hint" id="inviteHint">读取中…</span></div>
+    <div class="actionbar-btns">
+      <button class="btn btn-sm" id="btnInviteReload">刷新</button>
+      <label class="chk" style="margin:0;white-space:nowrap"><input type="checkbox" id="inviteEnabled"><span>开启邀请制</span></label>
+    </div>
+  </div>
+
+  <div class="form-scroll">
+    <div class="pad">
+      <fieldset class="card">
+        <legend>现在是什么状态</legend>
+        <div class="kv" id="inviteKv"></div>
+        <p class="note">开启后：<b>网站内容所有人可见</b>（资源、角色、设定都能浏览），但<b>与角色对话必须先通过邀请码</b>。判定全部在服务端 —— 前端只是显示；停用或删除某个邀请码，已经拿到凭证的人也会立刻失效。</p>
+      </fieldset>
+
+      <fieldset class="card">
+        <legend>生成新邀请码</legend>
+        <div class="grid grid-4">
+          <label class="fld"><span class="lbl">数量</span><input class="ipt" type="number" id="inviteCount" value="1" min="1" max="50"></label>
+          <label class="fld"><span class="lbl">有效天数</span><input class="ipt" type="number" id="inviteDays" value="30" min="0" max="3650"></label>
+          <label class="fld"><span class="lbl">备注</span><input class="ipt" type="text" id="inviteNote" placeholder="给谁用的，例如「阿岚-手机端」"></label>
+          <label class="fld"><span class="lbl">访客凭证有效期（天）</span><input class="ipt" type="number" id="inviteSessionDays" value="90" min="1" max="3650"></label>
+        </div>
+        <p class="note">有效天数填 <b>0</b> 表示永久有效；「访客凭证有效期」是对方通过之后，这台设备被记住多少天。</p>
+        <div class="actionbar-btns" style="justify-content:flex-start;margin-top:10px">
+          <button class="btn btn-primary" id="btnInviteCreate">生成邀请码</button>
+          <button class="btn" id="btnInviteSaveCfg">保存凭证有效期</button>
+        </div>
+        <div id="inviteMade"></div>
+      </fieldset>
+
+      <fieldset class="card">
+        <legend>已发出的邀请码</legend>
+        <div class="table-wrap" id="inviteTable"></div>
+        <p class="note">「对话轮数」只统计这个码名下的模型调用次数，用来观察谁在用、用了多少 —— 不设上限，也不影响额度规则（额度仍按访客每天 N 次算）。</p>
+      </fieldset>
+
+      <fieldset class="card">
+        <legend>怎么用</legend>
+        <ol class="note" style="padding-left:18px">
+          <li>打开「开启邀请制」，生成邀请码（可以一次生成多个，也可以填备注）。</li>
+          <li>把码发给指定的人（微信/私信都行，码形如 <code>ABCD-EFGH-JKLM-NPQR</code>）。</li>
+          <li>对方打开网站 → 右上角「邀请码」→ 输入一次 → 这台设备之后就能直接对话了。</li>
+          <li>要收回：把那一行「停用」，或者直接删除 —— 已发出的凭证随之作废。</li>
+        </ol>
       </fieldset>
     </div>
   </div>

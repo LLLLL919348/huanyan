@@ -13,6 +13,8 @@ data/model.local.json
 data/quota.json
 data/stats.json
 data/server-error.log
+# 邀请码：只存在服务器上，绝不入库（含明文码，等于门钥匙）
+data/invite.json
 data/runtime/
 *.log
 

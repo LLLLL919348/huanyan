@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+  :root{
+    --bg:#f6f3ec; --panel:#fffdf8; --ink:#2c2823; --ink2:#6b6257; --ink3:#9a9082;
+    --line:#e2dacb; --line2:#d3c9b6; --accent:#2f6fe0; --accent-soft:#e8f0fd;
+    --warn:#b5720f; --warn-soft:#fdf3e3; --danger:#c5353f; --ok:#2f855a;
+    --mono:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:var(--bg);color:var(--ink);font:15px/1.75 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;padding-bottom:60px}
+  header{position:sticky;top:0;z-index:9;background:rgba(246,243,236,.96);backdrop-filter:blur(6px);border-bottom:1px solid var(--line);padding:14px 18px}
+  h1{margin:0;font-size:19px;letter-spacing:.02em}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--ink3);font-size:12.5px;margin-top:3px}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+  button{font:inherit;font-size:13px;padding:7px 13px;border-radius:8px;border:1px solid var(--line2);background:var(--panel);color:var(--ink);cursor:pointer}
+  button:hover{border-color:var(--accent);color:var(--accent)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  button.primary:hover{background:#245bc0;color:#fff}
+  #status{font-size:12.5px;color:var(--ok);margin-left:4px}
+  #status.err{color:var(--danger)}
+  main{max-width:900px;margin:0 auto;padding:16px 18px 40px}
+  details{border:1px solid var(--line);border-radius:12px;background:var(--panel);margin:0 0 14px;overflow:hidden}
+  details[open]{box-shadow:0 1px 2px rgba(60,50,30,.04)}
+  summary{cursor:pointer;padding:12px 15px;font-weight:600;font-size:14.5px;letter-spacing:.02em;
+    background:linear-gradient(#fffefb,#fbf7ee);border-bottom:1px solid transparent;list-style:none}
+  details[open] summary{border-bottom-color:var(--line)}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"▸ ";color:var(--ink3)}
+  details[open] summary::before{content:"▾ "}
+  .body{padding:14px 15px 16px}
+  .fld{margin-bottom:14px}
+  .fld:last-child{margin-bottom:0}
+  .lbl{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12.5px;color:var(--ink2);margin-bottom:5px}
+  .lbl b{font-weight:600;color:var(--ink)}
+  .cnt{color:var(--ink3);font-family:var(--mono);font-size:11px}
+  input[type=text],input[type=number],textarea,select{
+    width:100%;font:inherit;font-size:14px;line-height:1.7;color:var(--ink);background:#fff;border:1px solid var(--line2);
+    border-radius:8px;padding:8px 10px}
+  textarea{resize:vertical;min-height:64px}
+  textarea.short{min-height:44px}
+  textarea.tall{min-height:200px}
+  textarea.mono{font-family:var(--mono);font-size:13px;line-height:1.65}
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+  .hint{font-size:12px;color:var(--ink3);margin-top:4px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+  @media(max-width:640px){.row2,.row3{grid-template-columns:1fr}}
+  .card{border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px;background:#fffdf9}
+  .card .hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:12.5px;color:var(--ink2)}
+  .del{color:var(--danger);border-color:#eccfd1;cursor:pointer}
+  .sw{display:flex;gap:6px;align-items:center}
+  .sw input{width:100%;font-family:var(--mono);font-size:12.5px}
+  .sw i{width:22px;height:22px;border-radius:5px;border:1px solid var(--line2);flex:none;display:block}
+  .add{width:100%;border-style:dashed;color:var(--ink2)}
+  .warnbox{background:var(--warn-soft);border:1px solid #f0dcb8;color:#7a5310;border-radius:10px;padding:10px 13px;font-size:13px;margin-bottom:14px}
+  .draftbox{background:var(--accent-soft);border:1px solid #c9dcfb;color:#1d4b9b;border-radius:10px;padding:10px 13px;font-size:13px;margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  /* 阅读模式 */
+  body.read #form{display:none}
+  #view{display:none;max-width:760px;margin:0 auto;padding:20px 18px 60px}
+  body.read #view{display:block}
+  #view h2{font-size:17px;margin:26px 0 8px;padding-bottom:6px;border-bottom:1px solid var(--line)}
+  #view h3{font-size:15px;margin:18px 0 6px}
+  #view p{margin:0 0 10px;color:var(--ink)}
+  #view .kv{color:var(--ink2);font-size:13px}
+  #view ul{margin:0 0 12px;padding-left:20px}
+  #view li{margin-bottom:4px}
+  #view .quote{color:var(--ink2);font-size:13px;border-left:3px solid var(--line2);padding-left:12px;margin:0 0 12px}
+  .tag{display:inline-block;font-size:11.5px;padding:1px 8px;border-radius:20px;border:1px solid var(--line2);color:var(--ink2);margin-right:6px}
+  footer{max-width:900px;margin:0 auto;padding:0 18px 30px;color:var(--ink3);font-size:12px;line-height:1.8}
+  footer code{font-family:var(--mono);background:#fff;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+</style>
+</head>
+<body>
+<script>
+/* 把脚本错误显示出来 —— 单文件工具最怕"点了没反应"，这里让它自己报 */
+window.addEventListener('error', function (e) {
+  var d = document.getElementById('errbox');
+  if (!d) { d = document.createElement('div'); d.id = 'errbox'; document.body.insertBefore(d, document.body.firstChild); }
+  d.style.cssText = 'background:#fdeaea;border:1px solid #f0c0c4;color:#8c1f28;padding:10px 14px;font:13px/1.7 monospace;white-space:pre-wrap';
+  d.textContent += '脚本出错：' + (e.message || e) + '\n' + (e.filename || '') + ':' + (e.lineno || '') + '\n';
+  document.title = 'ERROR: ' + e.message;
+});
+try { localStorage.getItem('probe'); } catch (e) {
+  var d0 = document.createElement('div');
+  d0.style.cssText = 'background:#fdf3e3;border:1px solid #f0dcb8;color:#7a5310;padding:8px 14px;font-size:13px';
+  d0.textContent = '提示：双击直接打开时，浏览器不允许这个页面用本地存储，所以「草稿自动保存」用不了。改完请点右上角的「导出可编辑 HTML」或「下载 JSON」来保存 —— 这两个都正常。';
+  document.body.insertBefore(d0, document.body.firstChild);
+}
+</script>
+<header>
+  <h1>幻言剧本 · <span id="hName">__TITLE__</span></h1>
+  <div class="sub" id="hSub"></div>
+  <div class="bar">
+    <button id="btnJson" class="primary">下载 JSON</button>
+    <button id="btnCopy">复制 JSON</button>
+    <button id="btnExport">导出可编辑 HTML</button>
+    <button id="btnPreview">阅读模式</button>
+    <button id="btnImport">导入 JSON…</button>
+    <input type="file" id="fileImport" accept=".json,application/json" style="display:none">
+    <span id="status"></span>
+  </div>
+</header>
+
+<div class="draftbox" id="draftBox" style="display:none">
+  <span id="draftMsg"></span>
+  <button id="btnRestore">恢复草稿</button>
+  <button id="btnDiscard">丢弃草稿</button>
+</div>
+
+<main id="form"></main>
+<div id="view"></div>
+
+<footer>
+  <p><b>这个文件怎么用</b>：直接在浏览器里改，改完点「下载 JSON」。想写回线上：后台 →「资源编辑」→ 选中这个本子 → 把对应字段粘回去；或者在有 SSH 隧道时，用
+  <code>PUT /api/resources/&lt;id&gt;</code> 把这个 JSON 整体提交（要带 <code>x-admin-token</code>）。</p>
+  <p>改到一半可以直接关掉页面：每次输入都会自动存一份草稿在本机浏览器里（localStorage），下次打开会提示恢复。点「导出可编辑 HTML」则会生成一份带当前改动的新文件，适合发给别人继续改。</p>
+  <p id="footMeta"></p>
+</footer>
+
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(function () {
+  'use strict';
+  var DATA = JSON.parse(document.getElementById('data').textContent);
+  var KEY = 'huanyan-script-draft:' + (DATA.id || 'new');
+  var state = JSON.parse(JSON.stringify(DATA));
+  var form = document.getElementById('form');
+  var view = document.getElementById('view');
+  var statusEl = document.getElementById('status');
+
+  function setStatus(msg, isErr) {
+    statusEl.textContent = msg || '';
+    statusEl.className = isErr ? 'err' : '';
+    if (msg) setTimeout(function () { if (statusEl.textContent === msg) statusEl.textContent = ''; }, 2600);
+  }
+
+  /* ---------- 字段定义：顺序即页面顺序 ---------- */
+  var SCALAR = [
+    ['id', '资源 id', 'text', '英文小写与短横线，唯一；改它等于新建一个本子'],
+    ['name', '本子名', 'text', ''],
+    ['subtitle', '副标题', 'text', '题材串，例如「古风 · 权谋 · 悬疑」'],
+    ['rating', '分级', 'text', '18+'],
+    ['length', '体量', 'text', '短线 / 中线 / 长线'],
+    ['status', '状态', 'select', 'playable=可玩，upcoming=未开放', ['playable', 'upcoming']],
+    ['difficulty', '难度 1-5', 'number', '影响扣血档位'],
+    ['powerBalance', '力量对比', 'select', 'player-higher / equal / ai-higher', ['player-higher', 'equal', 'ai-higher']],
+    ['heat', '热度（展示用）', 'number', ''],
+    ['players', '玩家人数（展示用）', 'number', '']
+  ];
+  var LONGS = [
+    ['brief', '一句话简介', 2, '卡片上那一行'],
+    ['teaser', '悬念句', 2, '卡片底部那句'],
+    ['intro', '开场导语', 6, '资源详情里给玩家看的第一段'],
+    ['world', '世界观', 6, '场景与规则背景'],
+    ['userRole', '玩家身份', 6, '玩家是谁、手里有什么、为什么来']
+  ];
+  var LISTS = [
+    ['genres', '题材标签', '一行一个'],
+    ['metaLines', '卡片三行档案', '一行一条，形如「身份：…」'],
+    ['plotReminder', '开局剧情提醒（玩家会先看到这张卡）', '一行一条；前几条要写「玩家已知」'],
+    ['openingHints', '开局提示（输入框上方的快捷句）', '一行一条，两句以内'],
+    ['rules', '扮演准则 rules', '一行一条'],
+    ['hpRules', '扣血规则 hpRules', '一行一条，形如「…：-8」'],
+    ['plotRules', '剧情规则 plotRules', '一行一条'],
+    ['behaviorRules', '行为规则 behaviorRules', '一行一条']
+  ];
+  var CHARS = [
+    ['name', '角色名', 1], ['title', '身份头衔', 1], ['age', '年龄', 1],
+    ['appearance', '外貌', 5], ['personality', '性格', 5], ['speech', '说话方式', 4],
+    ['desire', '他想要什么', 4], ['taboo', '雷点（一行一条）', 4]
+  ];
+  var REPLY_KEYS = [
+    ['greeting', '开场 greeting'], ['question', '提问 question'], ['action', '动作 action'],
+    ['emotion', '情绪 emotion'], ['flirt', '暧昧 flirt'], ['default', '兜底 default'],
+    ['punish', '惩戒 punish'], ['execution', '处刑 execution'], ['leave', '离开 leave']
+  ];
+
+  /* ---------- 渲染 ---------- */
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+  function section(title, open) {
+    var d = el('details'); if (open) d.open = true;
+    d.appendChild(el('summary', null, title));
+    var b = el('div', 'body'); d.appendChild(b);
+    return { root: d, body: b };
+  }
+  function fld(label, hint) {
+    var w = el('div', 'fld');
+    var l = el('div', 'lbl'); l.appendChild(el('b', null, label));
+    var cnt = el('span', 'cnt', ''); l.appendChild(cnt);
+    w.appendChild(l);
+    if (hint) w.appendChild(el('div', 'hint', hint));
+    return { wrap: w, cnt: cnt, label: l };
+  }
+  function debounce(fn, ms) { var t; return function () { clearTimeout(t); t = setTimeout(fn, ms); }; }
+  var saveDraft = debounce(function () {
+    try { localStorage.setItem(KEY, JSON.stringify({ at: Date.now(), data: state })); } catch (e) {}
+  }, 400);
+
+  function bind(node, get, set, opts) {
+    var val = get();
+    var isList = Array.isArray(val);
+    var ta = el('textarea');
+    ta.className = 'mono' + (opts && opts.short ? ' short' : '') + (opts && opts.tall ? ' tall' : '');
+    ta.value = isList ? val.join('\n') : (val == null ? '' : String(val));
+    var cnt = opts && opts.cnt;
+    function count() { if (!cnt) return; var n = ta.value.length; cnt.textContent = n + ' 字' + (isList ? ' · ' + ta.value.split('\n').filter(function (s) { return s.trim(); }).length + ' 条' : ''); }
+    count();
+    ta.addEventListener('input', function () {
+      if (isList) set(ta.value.split('\n').map(function (s) { return s.replace(/\s+$/, ''); }).filter(function (s) { return s.trim() !== ''; }));
+      else set(ta.value);
+      count(); saveDraft();
+    });
+    return ta;
+  }
+
+  function render() {
+    form.innerHTML = '';
+    document.getElementById('hName').textContent = state.name || state.id || '（未命名）';
+    document.getElementById('hSub').textContent = (state.id || '') + ' · ' + (state.subtitle || '') + ' · ' + (state.status || '') +
+      ' · prompt ' + String(state.prompt || '').length + ' 字';
+    document.getElementById('footMeta').textContent = '数据来源：幻言后台 —— ' + (state.id || 'new') + '；本文件生成于 ' + new Date().toLocaleString('zh-CN');
+
+    /* 1 基本信息 */
+    var s1 = section('① 基本信息', true);
+    var g1 = el('div', 'row2');
+    SCALAR.forEach(function (f) {
+      var w = fld(f[1], f[3]);
+      var v;
+      if (f[2] === 'select') {
+        v = el('select');
+        (f[4] || []).forEach(function (o) { var op = el('option'); op.value = o; op.textContent = o; if (String(state[f[0]] || '') === o) op.selected = true; v.appendChild(op); });
+        v.addEventListener('change', function () { state[f[0]] = v.value; saveDraft(); document.getElementById('hSub').textContent = (state.id || '') + ' · ' + (state.subtitle || '') + ' · ' + state.status + ' · prompt ' + String(state.prompt || '').length + ' 字'; });
+      } else {
+        v = el('input'); v.type = f[2] === 'number' ? 'number' : 'text';
+        v.value = state[f[0]] == null ? '' : state[f[0]];
+        v.addEventListener('input', function () {
+          state[f[0]] = f[2] === 'number' ? Number(v.value) : v.value;
+          if (f[0] === 'name') document.getElementById('hName').textContent = v.value || '（未命名）';
+          saveDraft();
+        });
+      }
+      w.wrap.appendChild(v);
+      g1.appendChild(w.wrap);
+    });
+    s1.body.appendChild(g1);
+
+    /* 封面 */
+    var cov = state.cover || (state.cover = { motif: 'lantern', palette: ['#1b1020', '#8c3b4a', '#e8b06a'] });
+    var wm = fld('封面配色方案 motif', 'lantern / neon / mist / rain / archive / sea / fair / throne');
+    var im = el('input'); im.type = 'text'; im.value = cov.motif || '';
+    im.addEventListener('input', function () { cov.motif = im.value.trim(); saveDraft(); });
+    wm.wrap.appendChild(im); s1.body.appendChild(wm.wrap);
+    var wp = fld('封面三色 palette', '三个十六进制颜色，用逗号分隔');
+    var ip = el('input'); ip.type = 'text'; ip.value = (cov.palette || []).join(', ');
+    ip.addEventListener('input', function () { cov.palette = ip.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 3); saveDraft(); });
+    wp.wrap.appendChild(ip); s1.body.appendChild(wp.wrap);
+    form.appendChild(s1.root);
+
+    /* 2 文案 */
+    var s2 = section('② 文案（卡片与开场导语）', true);
+    LONGS.forEach(function (f) {
+      var w = fld(f[1], f[3]);
+      w.wrap.appendChild(bind(null, function () { return state[f[0]]; }, function (v) { state[f[0]] = v; }, { tall: f[2] > 4, cnt: w.cnt }));
+      s2.body.appendChild(w.wrap);
+    });
+    form.appendChild(s2.root);
+
+    /* 3 角色 */
+    var s3 = section('③ 角色', false);
+    if (!state.character) state.character = {};
+    CHARS.forEach(function (f) {
+      var w = fld(f[1], f[0] === 'taboo' ? '一行一条，会被「越界判定」用到（GUARD 表）' : '');
+      w.wrap.appendChild(bind(null, function () { return state.character[f[0]]; }, function (v) { state.character[f[0]] = v; }, { tall: f[2] >= 4, short: f[2] === 1, cnt: w.cnt }));
+      s3.body.appendChild(w.wrap);
+    });
+    form.appendChild(s3.root);
+
+    /* 4 剧情与规则 */
+    var s4 = section('④ 剧情与规则', false);
+    var wp4 = fld('剧情主线 plot', '三段式：起 / 承 / 转，最后给出玩家可选的方向');
+    wp4.wrap.appendChild(bind(null, function () { return state.plot; }, function (v) { state.plot = v; }, { tall: true, cnt: wp4.cnt }));
+    s4.body.appendChild(wp4.wrap);
+    LISTS.forEach(function (f) {
+      if (f[0] === 'genres' || f[0] === 'metaLines' || f[0] === 'plotReminder' || f[0] === 'openingHints') return;
+      var w = fld(f[1], f[2]);
+      w.wrap.appendChild(bind(null, function () { return state[f[0]]; }, function (v) { state[f[0]] = v; }, { cnt: w.cnt }));
+      s4.body.appendChild(w.wrap);
+    });
+    form.appendChild(s4.root);
+
+    /* 5 开局提醒与提示 */
+    var s5 = section('⑤ 开局提醒卡 与 快捷提示（玩家进本先看到这些）', true);
+    ['plotReminder', 'openingHints', 'genres', 'metaLines'].forEach(function (k) {
+      var f = LISTS.filter(function (x) { return x[0] === k; })[0];
+      var w = fld(f[1], f[2]);
+      w.wrap.appendChild(bind(null, function () { return state[k]; }, function (v) { state[k] = v; }, { cnt: w.cnt }));
+      s5.body.appendChild(w.wrap);
+    });
+    form.appendChild(s5.root);
+
+    /* 6 beats */
+    var s6 = section('⑥ 剧情节点卡 beats（按推进度或回合自动插入）', false);
+    var beats = state.beats || (state.beats = []);
+    beats.forEach(function (b, i) {
+      var c = el('div', 'card');
+      var hd = el('div', 'hd');
+      hd.appendChild(el('span', null, '第 ' + (i + 1) + ' 张'));
+      var del = el('button', 'del', '删除'); del.type = 'button';
+      del.addEventListener('click', function () { if (confirm('删除这张节点卡？')) { beats.splice(i, 1); saveDraft(); render(); } });
+      hd.appendChild(del); c.appendChild(hd);
+      var r = el('div', 'row2');
+      [['at', '触发回合 at', 'number'], ['kind', '类型 kind', 'text']].forEach(function (f) {
+        var w = fld(f[1], '');
+        var inp = el('input'); inp.type = f[2]; inp.value = b[f[0]] == null ? '' : b[f[0]];
+        inp.addEventListener('input', function () { b[f[0]] = f[2] === 'number' ? Number(inp.value) : inp.value; saveDraft(); });
+        w.wrap.appendChild(inp); r.appendChild(w.wrap);
+      });
+      c.appendChild(r);
+      var kw = fld('key 卡（关键节点，只放一次）', '');
+      var kc = el('input'); kc.type = 'checkbox'; kc.checked = !!b.key; kc.style.width = '18px'; kc.style.height = '18px';
+      kc.addEventListener('change', function () { b.key = kc.checked; saveDraft(); });
+      kw.wrap.appendChild(kc); c.appendChild(kw.wrap);
+      var wtx = fld('卡片正文', '一两句话，写场景变化');
+      wtx.wrap.appendChild(bind(null, function () { return b.text; }, function (v) { b.text = v; }, { short: true, cnt: wtx.cnt }));
+      c.appendChild(wtx.wrap);
+      s6.body.appendChild(c);
+    });
+    var addB = el('button', 'add', '＋ 加一张节点卡'); addB.type = 'button';
+    addB.addEventListener('click', function () { beats.push({ at: (beats.length + 1) * 5, kind: 'guide', text: '' }); saveDraft(); render(); });
+    s6.body.appendChild(addB);
+    form.appendChild(s6.root);
+
+    /* 7 scenes */
+    var s7 = section('⑦ 场景 scenes', false);
+    var scenes = state.scenes || (state.scenes = []);
+    scenes.forEach(function (sc, i) {
+      var c = el('div', 'card');
+      var hd = el('div', 'hd'); hd.appendChild(el('span', null, '场景 ' + (i + 1)));
+      var del = el('button', 'del', '删除'); del.type = 'button';
+      del.addEventListener('click', function () { if (confirm('删除这个场景？')) { scenes.splice(i, 1); saveDraft(); render(); } });
+      hd.appendChild(del); c.appendChild(hd);
+      var r = el('div', 'row2');
+      [['id', '场景 id'], ['name', '场景名']].forEach(function (f) {
+        var w = fld(f[1], '');
+        var inp = el('input'); inp.type = 'text'; inp.value = sc[f[0]] == null ? '' : sc[f[0]];
+        inp.addEventListener('input', function () { sc[f[0]] = inp.value; saveDraft(); });
+        w.wrap.appendChild(inp); r.appendChild(w.wrap);
+      });
+      c.appendChild(r);
+      var wd = fld('一句话描述', '');
+      wd.wrap.appendChild(bind(null, function () { return sc.desc; }, function (v) { sc.desc = v; }, { short: true, cnt: wd.cnt }));
+      c.appendChild(wd.wrap);
+      var wpal = fld('三色 palette', '逗号分隔');
+      var ip = el('input'); ip.type = 'text'; ip.value = (sc.palette || []).join(', ');
+      ip.addEventListener('input', function () { sc.palette = ip.value.split(',').map(function (s) { return s.trim(); }).filter(Boolean).slice(0, 3); saveDraft(); });
+      wpal.wrap.appendChild(ip); c.appendChild(wpal.wrap);
+      s7.body.appendChild(c);
+    });
+    var addS = el('button', 'add', '＋ 加一个场景'); addS.type = 'button';
+    addS.addEventListener('click', function () { scenes.push({ id: '', name: '', desc: '', palette: ['#141020', '#3a2436', '#c9873f'] }); saveDraft(); render(); });
+    s7.body.appendChild(addS);
+    form.appendChild(s7.root);
+
+    /* 8 replies */
+    var s8 = section('⑧ 回复语料 replies（离线/兜底时用，一行一条）', false);
+    var rep = state.replies || (state.replies = {});
+    REPLY_KEYS.forEach(function (k) {
+      var w = fld(k[1], '');
+      w.wrap.appendChild(bind(null, function () { return rep[k[0]]; }, function (v) { rep[k[0]] = v; }, { short: true, cnt: w.cnt }));
+      s8.body.appendChild(w.wrap);
+    });
+    form.appendChild(s8.root);
+
+    /* 9 prompt */
+    var s9 = section('⑨ 提示词 prompt —— 模型真正读的就是这一段', true);
+    s9.body.appendChild(el('div', 'warnbox', '这一段是角色扮演的全部指令：角色、世界观、玩家已知、你的私心与误导、剧情规则、行为规则、输出格式。改这里等于改它的性格与底线，逐字都会影响表现。'));
+    var wp9 = fld('prompt 全文', '');
+    wp9.wrap.appendChild(bind(null, function () { return state.prompt; }, function (v) { state.prompt = v; }, { tall: true, cnt: wp9.cnt }));
+    s9.body.appendChild(wp9.wrap);
+    var row = el('div', 'bar');
+    var bSplit = el('button', null, '按【段落】插入换行'); bSplit.type = 'button';
+    bSplit.addEventListener('click', function () {
+      var tas = s9.body.querySelectorAll('textarea');
+      var ta = tas[tas.length - 1];
+      ta.value = ta.value.replace(/\s*【/g, '\n【').replace(/\n{2,}/g, '\n').replace(/^\n/, '');
+      state.prompt = ta.value; saveDraft(); wp9.cnt.textContent = ta.value.length + ' 字';
+      setStatus('已按段落整理换行');
+    });
+    row.appendChild(bSplit);
+    s9.body.appendChild(row);
+    form.appendChild(s9.root);
+
+    renderView();
+  }
+
+  /* ---------- 阅读模式 ---------- */
+  function renderView() {
+    var h = [];
+    function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+    function list(a) { return '<ul>' + (a || []).map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>'; }
+    h.push('<h1 style="font-size:22px;margin:0 0 4px">' + esc(state.name) + '</h1>');
+    h.push('<div class="kv">' + esc(state.subtitle) + ' · ' + esc(state.rating) + ' · ' + esc(state.length) + ' · ' + esc(state.status) + '</div>');
+    if (state.brief) h.push('<p class="quote">' + esc(state.brief) + '</p>');
+    if (state.teaser) h.push('<p class="quote">' + esc(state.teaser) + '</p>');
+    (state.genres || []).forEach(function (g) { h.push('<span class="tag">' + esc(g) + '</span>'); });
+    if (state.intro) h.push('<h2>开场</h2><p>' + esc(state.intro) + '</p>');
+    if (state.world) h.push('<h2>世界观</h2><p>' + esc(state.world) + '</p>');
+    if (state.userRole) h.push('<h2>玩家身份</h2><p>' + esc(state.userRole) + '</p>');
+    if (state.character) {
+      h.push('<h2>角色 · ' + esc(state.character.name) + '</h2>');
+      h.push('<div class="kv">' + esc(state.character.title) + ' · ' + esc(state.character.age) + '</div>');
+      ['appearance', 'personality', 'speech', 'desire'].forEach(function (k) {
+        if (!state.character[k]) return;
+        var l = { appearance: '外貌', personality: '性格', speech: '说话方式', desire: '他想要什么' }[k];
+        h.push('<h3>' + l + '</h3><p>' + esc(state.character[k]) + '</p>');
+      });
+      if ((state.character.taboo || []).length) h.push('<h3>雷点</h3>' + list(state.character.taboo));
+    }
+    if (state.plot) h.push('<h2>剧情主线</h2><p>' + esc(state.plot) + '</p>');
+    if ((state.plotRules || []).length) h.push('<h2>剧情规则</h2>' + list(state.plotRules));
+    if ((state.behaviorRules || []).length) h.push('<h2>行为规则</h2>' + list(state.behaviorRules));
+    if ((state.hpRules || []).length) h.push('<h2>扣血规则</h2>' + list(state.hpRules));
+    if ((state.rules || []).length) h.push('<h2>扮演准则</h2>' + list(state.rules));
+    if ((state.plotReminder || []).length) h.push('<h2>开局提醒卡</h2>' + list(state.plotReminder));
+    if ((state.beats || []).length) {
+      h.push('<h2>剧情节点卡</h2><ul>');
+      state.beats.forEach(function (b) { h.push('<li><b>第 ' + esc(b.at) + ' 回合' + (b.key ? '（关键）' : '') + '</b>：' + esc(b.text) + '</li>'); });
+      h.push('</ul>');
+    }
+    if (state.prompt) h.push('<h2>提示词</h2><p style="white-space:pre-wrap;font-family:var(--mono);font-size:13px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px">' + esc(state.prompt) + '</p>');
+    view.innerHTML = h.join('');
+  }
+
+  /* ---------- 校验与导出 ---------- */
+  function validate() {
+    var errs = [];
+    if (!state.id || !/^[a-z0-9-]+$/.test(state.id)) errs.push('资源 id 只能用小写字母、数字、短横线');
+    if (!state.name) errs.push('本子名不能为空');
+    if (!state.prompt || state.prompt.length < 200) errs.push('提示词太短（<200 字），模型会演不好');
+    if (!(state.plotReminder || []).length) errs.push('开局提醒卡是空的，玩家会不知道自己在哪、要干什么');
+    return errs;
+  }
+  function toJSON() { return JSON.stringify(state, null, 2); }
+  function download(name, text, type) {
+    var blob = new Blob([text], { type: type || 'application/json;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  }
+  document.getElementById('btnJson').addEventListener('click', function () {
+    var errs = validate();
+    if (errs.length) { setStatus('还有问题：' + errs[0], true); if (!confirm('校验没全过：\n\n' + errs.join('\n') + '\n\n仍然下载？')) return; }
+    download((state.id || 'script') + '.json', toJSON());
+    setStatus('已下载 JSON');
+  });
+  document.getElementById('btnCopy').addEventListener('click', function () {
+    var t = toJSON();
+    function fallback() {
+      var ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); setStatus('已复制 JSON'); } catch (e) { setStatus('复制失败，请手动全选复制', true); }
+      ta.remove();
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(function () { setStatus('已复制 JSON'); }, fallback);
+    else fallback();
+  });
+  document.getElementById('btnPreview').addEventListener('click', function () {
+    var on = document.body.classList.toggle('read');
+    this.textContent = on ? '回到编辑' : '阅读模式';
+    if (on) renderView();
+    window.scrollTo(0, 0);
+  });
+  document.getElementById('btnExport').addEventListener('click', function () {
+    var clone = document.documentElement;
+    var html = '<!DOCTYPE html>\n' + clone.outerHTML;
+    /* ★ 这里绝不能出现字面量的脚本闭合标签：HTML 解析器会把它当成脚本结束，后面的代码全被当正文。
+       所以闭合标签拆成 '<\/scr' + 'ipt>' 拼出来。 */
+    var closeTag = '<\/scr' + 'ipt>';
+    html = html.replace(/<script id="data" type="application\/json">[\s\S]*?<\/script>/,
+      '<script id="data" type="application/json">' + JSON.stringify(state).replace(/<\//g, '<\\/') + closeTag);
+    download((state.id || 'script') + '.html', html, 'text/html;charset=utf-8');
+    setStatus('已导出可编辑 HTML');
+  });
+  document.getElementById('btnImport').addEventListener('click', function () { document.getElementById('fileImport').click(); });
+  document.getElementById('fileImport').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var j = JSON.parse(String(r.result));
+        if (j.resources && j.resources[0]) j = j.resources[0];
+        if (!j || typeof j !== 'object' || !j.id) throw new Error('不像一个资源对象（缺 id）');
+        if (!confirm('导入会覆盖当前页面的全部内容，继续？')) return;
+        state = j; saveDraft(); render(); setStatus('已导入 ' + j.id);
+      } catch (err) { setStatus('导入失败：' + err.message, true); }
+    };
+    r.readAsText(f, 'utf-8');
+    e.target.value = '';
+  });
+
+  /* ---------- 草稿恢复 ---------- */
+  (function () {
+    var raw = null;
+    try { raw = localStorage.getItem(KEY); } catch (e) {}
+    if (!raw) return;
+    var saved = null;
+    try { saved = JSON.parse(raw); } catch (e) { return; }
+    if (!saved || !saved.data) return;
+    if (JSON.stringify(saved.data) === JSON.stringify(DATA)) { try { localStorage.removeItem(KEY); } catch (e) {} return; }
+    var box = document.getElementById('draftBox');
+    box.style.display = 'flex';
+    document.getElementById('draftMsg').textContent = '这台浏览器里有一份未保存的草稿（' + new Date(saved.at).toLocaleString('zh-CN') + '），和打开时的内容不一样。';
+    document.getElementById('btnRestore').addEventListener('click', function () { state = saved.data; render(); box.style.display = 'none'; setStatus('已恢复草稿'); });
+    document.getElementById('btnDiscard').addEventListener('click', function () { try { localStorage.removeItem(KEY); } catch (e) {} box.style.display = 'none'; });
+  })();
+
+  if (!DATA.prompt || DATA.id === 'new-script' || /^（新本子）/.test(DATA.name || '')) {
+    var tip = el('div', 'warnbox', '这是一个空模板：把「本子名」「资源 id」「提示词」「开局提醒卡」填上，其余按需补。提示词至少要有【角色】【世界观与场景】【玩家已知】【剧情规则】【行为规则】【输出格式】这几段。');
+    form.insertBefore(tip, form.firstChild);
+  }
+  render();
+})();
+</script>
+</body>
+</html>

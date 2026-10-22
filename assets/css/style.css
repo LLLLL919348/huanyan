@@ -381,6 +381,25 @@ svg.ico{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.7;st
 .empty .big{font-size:34px;opacity:.5;}
 
 .toasts{position:fixed;right:22px;bottom:60px;z-index:80;display:flex;flex-direction:column;gap:10px;align-items:flex-end;pointer-events:none;}
+/* 进对话后自动全屏的倒计时提示：悬在输入区上方，整条都能点（点哪都等于取消） */
+.autofocus-hint{
+  position:fixed;left:50%;transform:translateX(-50%);bottom:104px;z-index:95;
+  display:flex;align-items:center;gap:12px;padding:9px 10px 9px 15px;border-radius:999px;
+  background:rgba(26,24,21,.93);color:#fff;font-size:13px;letter-spacing:.01em;
+  box-shadow:0 10px 28px rgba(0,0,0,.3);cursor:pointer;user-select:none;white-space:nowrap;
+  animation:afIn .22s ease-out;
+}
+@keyframes afIn{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}}
+.autofocus-hint .af-n{font-family:var(--mono);font-size:14px;color:#8fb6ff;margin-left:2px}
+.autofocus-hint .af-close{
+  font:inherit;font-size:12.5px;padding:4px 11px;border-radius:999px;cursor:pointer;
+  border:1px solid rgba(255,255,255,.42);background:transparent;color:#fff;white-space:nowrap;
+}
+.autofocus-hint .af-close:hover{background:rgba(255,255,255,.16);border-color:rgba(255,255,255,.7);}
+body[data-focus="1"] .autofocus-hint{display:none;}
+@media (max-width:700px){
+  .autofocus-hint{bottom:150px;font-size:12.5px;padding:8px 9px 8px 12px;gap:9px;}
+}
 .toast{
   min-width:210px;max-width:340px;padding:11px 16px;border-radius:13px;
   background:var(--surface);border:1px solid var(--line-strong);

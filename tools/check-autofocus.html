@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:760px;border:0}
+#out{position:fixed;left:0;bottom:0;right:0;max-height:46%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!--
+  进入对话后自动全屏（带 3 秒可取消倒计时）验收：
+    ① 进对话约 3 秒后出现提示条，文字含「即将进入全屏模式」和「3s」
+    ② 数字每秒刷新：3s → 2s → 1s
+    ③ 点「点击关闭」→ 提示消失，并且**不会**进入全屏（再等 3 秒也不进）
+    ④ 不关掉的话，倒计时结束会真的进入全屏（body[data-focus=1]）
+    ⑤ 同一个会话只问一次：取消后再回到对话页，不会又弹出来
+  用法： powershell -File tools/run-smoke.ps1 check-autofocus 30000 5599
+-->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+let fails = 0;
+function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
+const f = document.getElementById('f');
+f.addEventListener('load', function () {
+  if (window.__afStarted) return;
+  window.__afStarted = true;
+  const D = () => f.contentDocument, W = () => f.contentWindow;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const hint = () => D().getElementById('autoFocusHint');
+  const hintText = () => { const h = hint(); return h ? String(h.textContent).replace(/\s+/g, ' ').trim() : ''; };
+  const focusOn = () => { try { return W().RP.app.focusOn(); } catch (e) { return null; } };
+  async function until(fn, ms) { const t0 = Date.now(); while (Date.now() - t0 < (ms || 8000)) { try { const v = fn(); if (v) return v; } catch (e) { } await wait(100); } return null; }
+  async function ready() { for (let i = 0; i < 80 && !D().querySelector('.res-card'); i++) await wait(200); return true; }
+  const firstPlayable = () => W().RP.resources.list().filter(r => r.status === 'playable');
+
+  (async function () {
+    try {
+      await ready();
+      const list = firstPlayable();
+      P('可玩本子 ' + list.length + ' 个');
+
+      /* ---------- ① ② 提示条与倒计时 ---------- */
+      P('【① 进对话后弹提示，并每秒刷新数字】');
+      W().RP.app.play(list[0].id);
+      await wait(600);
+      ok(!hint(), '刚进对话（0.6s）时还没有提示');
+      const h = await until(() => hint(), 6000);
+      ok(!!h, '约 3 秒后出现提示条');
+      const t3 = hintText();
+      ok(/即将进入全屏模式/.test(t3), '文案含「即将进入全屏模式」', t3);
+      ok(/3s/.test(t3), '起始显示 3s', t3);
+      ok(/点击关闭/.test(t3), '带「点击关闭」', t3);
+      await wait(1050);
+      const t2 = hintText();
+      ok(/2s/.test(t2), '1 秒后变 2s', t2);
+      await wait(1050);
+      const t1 = hintText();
+      ok(/1s/.test(t1), '再 1 秒变 1s', t1);
+      ok(!focusOn(), '倒计时期间还没进全屏');
+
+      /* ---------- ③ 点关闭 ---------- */
+      P('【② 点「点击关闭」→ 取消，不进全屏】');
+      const btn = hint().querySelector('.af-close');
+      ok(!!btn, '有可以点的关闭按钮');
+      const win1 = W(); btn.dispatchEvent(new win1.MouseEvent('click', { bubbles: true }));
+      await wait(300);
+      ok(!hint(), '点完提示条立刻消失');
+      ok(!focusOn(), '没有进入全屏');
+      await wait(3200);
+      ok(!focusOn(), '再等 3 秒也没有偷偷进全屏');
+      ok(!hint(), '也没有再弹回来');
+
+      /* ---------- ⑤ 同一会话不再打扰 ---------- */
+      P('【③ 取消之后，同一个会话不再打扰】');
+      W().RP.app.setView('resources');
+      await wait(300);
+      W().RP.app.setView('chat');
+      await wait(4200);
+      ok(!hint(), '回到同一个对话，4 秒内没有再次弹提示');
+      ok(!focusOn(), '也没有进全屏');
+
+      /* ---------- ④ 不理会 → 真的进全屏 ---------- */
+      P('【④ 换个本子、不理会 → 倒计时结束真的进全屏】');
+      W().RP.app.setView('resources');
+      await wait(200);
+      W().RP.app.play(list[1] ? list[1].id : list[0].id);
+      const h2 = await until(() => hint(), 6000);
+      ok(!!h2, '新会话照样会提示');
+      const entered = await until(() => focusOn(), 6000);
+      ok(entered === true, '倒计时走完进入全屏（body data-focus=1）', String(focusOn()));
+      ok(D().body.getAttribute('data-focus') === '1', 'body 上有 data-focus=1');
+      ok(!!D().getElementById('focusExit'), '全屏里有「退出全屏」浮层按钮（能出来）', '');
+      ok(!hint(), '进入全屏后提示条不残留');
+
+      /* ---------- 退出全屏 ---------- */
+      P('【⑤ 退出全屏照旧】');
+      const exit = D().getElementById('focusExit');
+      const win2 = W(); if (exit) exit.dispatchEvent(new win2.MouseEvent('click', { bubbles: true }));
+      await wait(400);
+      ok(!focusOn(), '点「退出全屏」能退出来');
+
+      P('');
+      P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body>
+</html>

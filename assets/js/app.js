@@ -164,6 +164,11 @@ RP.app = (function () {
   function focusOn() { return document.body.dataset.focus === '1'; }
   function setFocus(on, opts) {
     on = !!on;
+    /* 手动进全屏时，把还在跳的倒计时收掉，免得提示条压在全屏界面上 */
+    if (on && AUTO_FOCUS.timer) { clearTimeout(AUTO_FOCUS.timer); AUTO_FOCUS.timer = null; }
+    if (on && AUTO_FOCUS.tick) { clearInterval(AUTO_FOCUS.tick); AUTO_FOCUS.tick = null; }
+    if (on && AUTO_FOCUS.convId) { AUTO_FOCUS.done[AUTO_FOCUS.convId] = 'entered'; AUTO_FOCUS.convId = null; }
+    if (on) autoFocusHint(false);
     const was = focusOn();
     document.body.dataset.focus = on ? '1' : '0';
     if (on && !was) {
@@ -277,6 +282,8 @@ RP.app = (function () {
     RP.store.save();
     const sc = document.querySelector('#view-' + v + ' .view-scroll');
     if (sc) sc.scrollTop = 0;
+    /* 进对话页 → 开始「几秒后自动全屏」的计时；离开对话页 → 直接取消 */
+    if (v === 'chat') autoFocusSchedule(); else autoFocusCancel('left-chat');
   }
 
   /* 从资源卡进入对话：新建会话 + 载入提示词 + 送达剧情提醒 */
@@ -297,6 +304,107 @@ RP.app = (function () {
     }
     paintNavDot();
     return resource;
+  }
+
+  /* ------------------------------ 进入对话后自动全屏 ------------------------------
+     需求：进对话几秒后自动进全屏；进之前先给 3 秒倒计时提示，每秒刷新数字，
+     玩家点「点击关闭」就取消。
+     ★ 用的是站点自己的「界面全屏」（setFocus），不是浏览器 Fullscreen API ——
+       后者不给用户手势就会被拦，倒计时结束再调用必然失败；界面全屏没有这个限制，
+       而且它本来就有三条出口（右上角按钮 / Esc / 点别的页签），玩家不会被困住。
+     ★ 同一个会话只问一次：进去了或取消过，就不再打扰；换本子才重新算。 */
+  const AUTO_FOCUS = { delay: 3000, count: 3, timer: null, tick: null, convId: null, done: {}, hint: null };
+
+  function autoFocusHint(show, n) {
+    let el = document.getElementById('autoFocusHint');
+    if (!show) { if (el) el.remove(); AUTO_FOCUS.hint = null; return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'autoFocusHint';
+      el.className = 'autofocus-hint';
+      el.innerHTML = '<span class="af-text">即将进入全屏模式 <b class="af-n">3s</b></span>' +
+        '<button class="af-close" type="button">点击关闭</button>';
+      el.addEventListener('click', function (e) {
+        e.preventDefault();
+        autoFocusCancel('click');
+      });
+      document.body.appendChild(el);
+    }
+    const num = el.querySelector('.af-n');
+    if (num) num.textContent = n + 's';
+    placeAutoFocusHint(el);
+    AUTO_FOCUS.hint = el;
+  }
+
+  /* 位置不能写死：输入区高度随「道具行 / 开局提示 / 手机窄屏」变化，
+     写死一个 bottom 会压住输入框（第一版就压在 textarea 上了）。
+     这里实时量一次：#composer 的顶边之上 12px、对话区水平居中。 */
+  function placeAutoFocusHint(el) {
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const view = document.getElementById('view-chat');
+    const comp = document.getElementById('composer');
+    let left = vw / 2, bottom = 104;
+    if (view) {
+      const r = view.getBoundingClientRect();
+      if (r.width > 200) left = r.left + r.width / 2;
+    }
+    if (comp) {
+      const c = comp.getBoundingClientRect();
+      if (c.height > 0 && c.top > 0 && c.top < vh) bottom = Math.max(14, vh - c.top + 12);
+    }
+    el.style.left = Math.max(90, Math.min(vw - 90, left)) + 'px';
+    el.style.bottom = bottom + 'px';
+  }
+
+  function autoFocusCancel(reason) {
+    clearTimeout(AUTO_FOCUS.timer);
+    clearInterval(AUTO_FOCUS.tick);
+    AUTO_FOCUS.timer = null; AUTO_FOCUS.tick = null;
+    if (AUTO_FOCUS.convId) AUTO_FOCUS.done[AUTO_FOCUS.convId] = reason || 1;
+    AUTO_FOCUS.convId = null;
+    autoFocusHint(false);
+  }
+
+  /* 什么时候才应该弹：在对话页、是这个本子的会话、还没进全屏、这个会话没问过 */
+  function autoFocusEligible() {
+    const st = RP.store.get();
+    if ((st.ui.view || '') !== 'chat') return null;
+    if (focusOn()) return null;
+    const conv = RP.store.active();
+    if (!conv || conv.kind !== 'roleplay') return null;
+    if (AUTO_FOCUS.done[conv.id]) return null;
+    return conv;
+  }
+
+  function autoFocusSchedule() {
+    autoFocusCancel('replaced');
+    const conv = autoFocusEligible();
+    if (!conv) return false;
+    AUTO_FOCUS.convId = conv.id;
+    AUTO_FOCUS.timer = setTimeout(function () { autoFocusCountdown(conv.id); }, AUTO_FOCUS.delay);
+    return true;
+  }
+
+  function autoFocusCountdown(convId) {
+    /* 倒计时开始时再确认一次条件：这几秒里玩家可能已经自己进全屏、或换了页签 */
+    const conv = RP.store.conv(convId);
+    const st = RP.store.get();
+    if (!conv || (st.ui.view || '') !== 'chat' || focusOn() || RP.store.active() !== conv || AUTO_FOCUS.done[convId]) {
+      AUTO_FOCUS.convId = null;
+      return;
+    }
+    let n = AUTO_FOCUS.count;
+    autoFocusHint(true, n);
+    AUTO_FOCUS.tick = setInterval(function () {
+      n -= 1;
+      if (n > 0) { autoFocusHint(true, n); return; }
+      clearInterval(AUTO_FOCUS.tick);
+      AUTO_FOCUS.tick = null;
+      autoFocusHint(false);
+      AUTO_FOCUS.done[convId] = 'entered';
+      AUTO_FOCUS.convId = null;
+      if ((RP.store.get().ui.view || '') === 'chat' && !focusOn()) setFocus(true);
+    }, 1000);
   }
 
   /* ------------------------------ 提示层 ------------------------------ */
@@ -492,6 +600,7 @@ RP.app = (function () {
     paintQuota: paintQuota, paintNavDot: paintNavDot, applySiteTexts: applySiteTexts,
     themeMode: themeMode, isLight: isLight, toggleMode: toggleMode,
     toggleFocus: toggleFocus, setFocus: setFocus, focusOn: focusOn, paintFocus: paintFocus, applyFont: applyFont,
+    autoFocus: { schedule: autoFocusSchedule, cancel: autoFocusCancel, state: AUTO_FOCUS },
     checkBuildNow: function () { return checkBuild(false); }, buildId: function () { return buildId; },
     FONT_SIZES: FONT_SIZES, FONT_FAMILIES: FONT_FAMILIES
   };

@@ -1,53 +1,83 @@
 @echo off
 chcp 936 >nul
-title å¹»è¨€åå°ï¼ˆSSH éš§é“ï¼‰
-setlocal
+title »ÃÑÔºóÌ¨£¨SSH ËíµÀ£©
+setlocal enabledelayedexpansion
 
 set "KEY=%USERPROFILE%\.ssh\openclaw-cloud"
 set "SECRET=%USERPROFILE%\.huanyan-deploy.json"
 set "SERVER=admin@8.138.170.154"
 set "LPORT=18080"
+set "ADMINURL=http://127.0.0.1:%LPORT%/admin"
 
 echo.
 echo   ============================================================
-echo     å¹»è¨€ Â· æ‰“å¼€å†…å®¹åå°
+echo     »ÃÑÔ ¡¤ ´ò¿ªÄÚÈİºóÌ¨
 echo   ============================================================
 echo.
-echo   åå°åªå…è®¸ä»æœåŠ¡å™¨æœ¬æœºè®¿é—®ï¼Œæ‰€ä»¥è¿™é‡Œå…ˆå¼€ä¸€æ¡ SSH éš§é“ï¼š
-echo     ä½ ç”µè„‘çš„ 127.0.0.1:%LPORT%  â†’  æœåŠ¡å™¨çš„ 127.0.0.1:80
-echo   éš§é“åªåœ¨ä¸‹é¢è¿™ä¸ªçª—å£å¼€ç€æ—¶æœ‰æ•ˆï¼›å…³æ‰çª—å£ = å…³é—­åå°å…¥å£ã€‚
+echo   ºóÌ¨Ö»ÔÊĞí´Ó·şÎñÆ÷±¾»ú·ÃÎÊ£¬ËùÒÔÕâÀïÏÈ¿ªÒ»Ìõ SSH ËíµÀ£º
+echo     ÄãµçÄÔµÄ 127.0.0.1:%LPORT%  -^>  ·şÎñÆ÷µÄ 127.0.0.1:80
+echo   ËíµÀÖ»ÔÚÄÇ¸ö´°¿Ú¿ª×ÅÊ±ÓĞĞ§£»¹Øµô´°¿Ú = ¹Ø±ÕºóÌ¨Èë¿Ú¡£
 echo.
 
-if not exist "%KEY%" (
-  echo   [x] æ‰¾ä¸åˆ° SSH ç§é’¥ï¼š%KEY%
-  echo       æ²¡æœ‰å®ƒå°±å»ºä¸äº†éš§é“ã€‚
-  pause
-  exit /b 1
-)
+if not exist "%KEY%" goto :nokey
 
+rem ------------------------------------------------------------------
+rem  È¡ÁîÅÆ£ºÒÔÇ°ÓÃ powershell ½âÎö JSON£¬ÔÚ for /f ÀïÒıºÅÇ¶Ì×»á½âÎöÊ§°Ü£¬
+rem  ½á¹ûÁîÅÆÓÀÔ¶ÊÇ¿ÕµÄ¡¢½Å±¾Ö±½ÓÍË³ö ¡ª¡ª ±íÏÖ¾ÍÊÇ"Ë«»÷ÁËÃ»·´Ó¦"¡£
+rem  ¸Ä³É findstr È¡ÄÇÒ»ĞĞ¡¢ÔÙÈ¥µôÒıºÅ/¿Õ¸ñ/¶ººÅ£¬²»ÒÀÀµÈÎºÎÍâ²¿³ÌĞò¡£
+rem ------------------------------------------------------------------
 set "TOKEN="
-for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "try{(Get-Content -Raw '%SECRET%' ^| ConvertFrom-Json).adminToken}catch{''}"`) do set "TOKEN=%%i"
-if "%TOKEN%"=="" (
-  echo   [x] è¯»ä¸åˆ°ç®¡ç†ä»¤ç‰Œï¼ˆ%SECRET%ï¼‰
-  echo       ä»¤ç‰Œåœ¨éƒ¨ç½²æ—¶ç”Ÿæˆï¼›ä¸¢äº†å¯ä»¥é‡æ–°éƒ¨ç½²ä¸€æ¬¡ï¼ˆtools\deploy.ps1ï¼‰ã€‚
-  pause
-  exit /b 1
+for /f "tokens=2 delims=:" %%i in ('findstr /i /c:"adminToken" "%SECRET%" 2^>nul') do set "TOKEN=%%i"
+if defined TOKEN (
+  set TOKEN=!TOKEN:"=!
+  set TOKEN=!TOKEN: =!
+  set TOKEN=!TOKEN:,=!
+)
+if not defined TOKEN goto :notoken
+
+rem ------------------------------------------------------------------
+rem  ËíµÀ¿ÉÄÜÒÑ¾­¿ª×Å£¨ÉÏ´ÎÃ»¹Ø£©¡£ÕâÊ±ÔÙ ssh -L »á±¨
+rem  "bind: Address already in use" È»ºóµ±³¡ÍË³ö£¬´°¿ÚÒ»ÉÁ¾ÍÃ»ÁË¡£
+rem  ËùÒÔÏÈÌ½¶Ë¿Ú£ºÒÑ¾­ÔÚ¼àÌı¾ÍÌø¹ı¿ªËíµÀÕâÒ»²½¡£
+rem ------------------------------------------------------------------
+netstat -ano | findstr ":%LPORT%" | findstr "LISTENING" >nul 2>&1
+if %errorlevel%==0 (
+  echo   [1/2] ËíµÀÒÑ¾­ÔÚÅÜ£¨±¾»ú %LPORT% ÒÑ¼àÌı£©£¬Ìø¹ı¡£
+  goto :open
 )
 
-echo   [1/3] æ‰“å¼€éš§é“çª—å£...
-start "å¹»è¨€ SSH éš§é“ï¼ˆå…³æ‰å®ƒå°±ç­‰äºå…³é—­åå°å…¥å£ï¼‰" cmd /k "chcp 936 >nul & echo éš§é“å·²å»ºç«‹ï¼šæœ¬æœº %LPORT% -^> æœåŠ¡å™¨ 80ã€‚å…³æ‰æœ¬çª—å£å³æ–­å¼€ã€‚ & ssh -i "%KEY%" -N -L %LPORT%:127.0.0.1:80 %SERVER%"
-
-echo   [2/3] ç­‰éš§é“å°±ç»ª...
+echo   [1/2] ´ò¿ªËíµÀ´°¿Ú...
+start "»ÃÑÔ SSH ËíµÀ£¨¹ØµôËü¾ÍµÈÓÚ¹Ø±ÕºóÌ¨Èë¿Ú£©" cmd /k ssh -i %KEY% -N -L %LPORT%:127.0.0.1:80 %SERVER%
+echo         µÈËíµÀ¾ÍĞ÷...
 ping -n 4 127.0.0.1 >nul
 
-echo   [3/3] æ‰“å¼€åå°é¡µé¢...
-start "" "http://127.0.0.1:%LPORT%/admin?token=%TOKEN%"
-
+:open
+echo   [2/2] ´ò¿ªºóÌ¨Ò³Ãæ...
+start "" "%ADMINURL%?token=%TOKEN%"
 echo.
-echo   åå°åœ°å€ï¼šhttp://127.0.0.1:%LPORT%/admin
-echo   è®¿é—®ç»Ÿè®¡ï¼šhttp://127.0.0.1:%LPORT%/admin  â†’ é¡¶éƒ¨ã€Œè®¿é—®ç»Ÿè®¡ã€æ ‡ç­¾
-echo   ç«™ç‚¹å‰å°ï¼šhttp://8.138.170.154/
+echo   ºóÌ¨µØÖ·£º%ADMINURL%
+echo   µØÖ·Àï´øµÄÁîÅÆÖ»ÓÃÓÚÕâÒ»´Î´ò¿ª£¬Ò³ÃæÔØÈëºó»á±»Ä¨µô¡£
 echo.
-echo   ï¼ˆæœ¬çª—å£å¯ä»¥å…³æ‰ï¼Œéš§é“åœ¨å¦ä¸€ä¸ªçª—å£é‡Œï¼‰
+echo   ½ø²»È¥Ê±°´Õâ¸öË³Ğò²é£º
+echo     1^) ËíµÀÄÇ¸ö´°¿Ú»¹ÔÚ²»ÔÚ£¨¹ØÁË¾ÍµÈÓÚ¹Ø±ÕÈë¿Ú£¬ÕâÊÇÉè¼ÆÈç´Ë£©
+echo     2^) ÊÖ¶¯´ò¿ª %ADMINURL% £¬µ¯³öÁîÅÆ¿ò¾ÍÕ³Ìù %SECRET% ÀïµÄ adminToken
+echo     3^) ·şÎñÆ÷ÉÏ·şÎñÔÚ²»ÔÚ£ºssh ÉÏÈ¥ÅÜ systemctl is-active huanyan.service
+echo.
 timeout /t 8 >nul
 endlocal
+exit /b 0
+
+:nokey
+echo   [x] ÕÒ²»µ½ SSH Ë½Ô¿£º%KEY%
+echo       Ã»ÓĞËü¾Í½¨²»ÁËËíµÀ¡£
+echo.
+pause
+exit /b 1
+
+:notoken
+echo   [x] ´Ó %SECRET% Àï¶Á²»µ½ adminToken
+echo       ´ò¿ªÄÇ¸öÎÄ¼ş£¬°Ñ "adminToken" ºóÃæÒıºÅÀïÄÇ´®¸´ÖÆ³öÀ´£¬
+echo       È»ºóÊÖ¶¯´ò¿ª %ADMINURL% £¬ÔÚÒ³ÃæµÄÁîÅÆ¿òÀïÕ³Ìù¡£
+echo.
+pause
+exit /b 1

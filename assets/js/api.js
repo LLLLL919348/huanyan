@@ -394,7 +394,45 @@ RP.api = (function () {
       .replace(/<<+[\s\S]*$/, '')
       .replace(/[ \t]+\n/g, '\n'));
     out.text = stripMeta(out.text);
+    out.text = unwrapOuterParens(out.text);
     return out;
+  }
+  /* 小模型（glm-4-flash 实测很常见）会把**整段回复**包在一对括号里，写成
+     「（我缓缓摇头，语速不快地说，"孩子，今晚没有人来过。"）」
+     —— 这不是第一人称扮演该有的样子，玩家看到的像一句旁白。
+     整段被一对括号包住时把这对外括号去掉，里面本来就是正文。
+     只在括号确实配成一对时动手；多段、内部还有括号的保持原样。 */
+  function unwrapOuterParens(t) {
+    let s = String(t || '').trim();
+    for (let round = 0; round < 2; round++) {
+      if (s.length < 20) break;
+      const open = s.charAt(0), close = s.charAt(s.length - 1);
+      if ((open !== '（' && open !== '(') || (close !== '）' && close !== ')')) break;
+      const inner = s.slice(1, -1);
+      let depth = 0, balanced = true;
+      for (let i = 0; i < inner.length; i++) {
+        const ch = inner.charAt(i);
+        if (ch === open) depth++;
+        else if (ch === close) { depth--; if (depth < 0) { balanced = false; break; } }
+      }
+      if (!balanced || depth !== 0) break;
+      s = inner.trim();
+    }
+    /* 更常见的一种：模型只写了开头的「（」，结尾忘了收 —— 括号数不平衡。
+       这时把开头那个孤零零的（去掉就行，正文本来就是正文。
+       逐行处理：小模型常写好几段，每段都各起一个（。 */
+    if (s.length > 8) {
+      s = s.split('\n').map(function (line) {
+        const t = line.trim();
+        if (t.length <= 8) return line;
+        const first = t.charAt(0);
+        if (first !== '（' && first !== '(') return line;
+        const opens = (t.match(/[（(]/g) || []).length;
+        const closes = (t.match(/[）)]/g) || []).length;
+        return closes < opens ? t.slice(1).trim() : line;
+      }).join('\n');
+    }
+    return s;
   }
   /* 小模型会把「写给系统的说明」当台词念出来。实测两种：
      ① 整段【提醒】…请尝试寻找新的切入点…你可以询问…；

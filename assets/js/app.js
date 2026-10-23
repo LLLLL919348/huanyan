@@ -55,8 +55,20 @@ RP.app = (function () {
     document.title = (s.name || '幻言') + ' · AI 角色扮演';
     const foot = document.querySelector('.global-foot');
     if (foot && Array.isArray(s.footerNotes) && s.footerNotes.length) {
-      foot.innerHTML = s.footerNotes.map(function (t) { return '<span>' + RP.util.esc(t) + '</span>'; }).join('<span class="sep">·</span>') +
-        (s.icp ? '<span class="sep">·</span><span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">' + RP.util.esc(s.icp) + '</a></span>' : '');
+      foot.innerHTML = s.footerNotes.map(function (t) { return '<span>' + RP.util.esc(t) + '</span>'; }).join('<span class="sep">·</span>');
+      /* 备案号：静态页脚里已经写死一份（看源码也能看到），这里只负责按后台设置更新文字，不重复添加 */
+      if (s.icp) {
+        let link = foot.querySelector('a[href*="beian.miit.gov.cn"]');
+        if (!link) {
+          const wrap = document.createElement('span');
+          wrap.className = 'icp';
+          wrap.innerHTML = '<a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer"></a>';
+          foot.appendChild(document.createTextNode(' · '));
+          foot.appendChild(wrap);
+          link = wrap.querySelector('a');
+        }
+        link.textContent = s.icp;
+      }
     }
   }
 

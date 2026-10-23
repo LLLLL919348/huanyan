@@ -1789,3 +1789,43 @@ body[data-mode="light"] .reminder-notice{color:#8a5607;}
   .nav-item{padding:7px 9px;}
   .icon-btn{width:30px;height:30px;}
 }
+
+/* ---------- 自带 Key 引导（need-model 面板） ---------- */
+.need-model-steps{display:flex;flex-direction:column;gap:9px;margin:12px 0 4px;text-align:left}
+.nm-step{display:flex;gap:9px;align-items:flex-start;font-size:12.5px;line-height:1.75;color:var(--text-2)}
+.nm-step > b{flex:none;width:19px;height:19px;border-radius:50%;background:var(--accent-soft);color:var(--accent-2);
+  font-size:11.5px;font-weight:700;display:flex;align-items:center;justify-content:center;margin-top:2px}
+.nm-step code{font-family:var(--mono);font-size:11.5px;background:var(--track);border-radius:4px;padding:0 4px}
+.locked-panel.need-model{text-align:left}
+.locked-panel.need-model .row{justify-content:flex-start;margin-top:12px}
+
+/* ---------- 新增资源（投稿） ---------- */
+.submit-mask{position:fixed;inset:0;z-index:120;background:rgba(12,10,8,.55);backdrop-filter:blur(3px);
+  display:flex;align-items:center;justify-content:center;padding:18px}
+.submit-panel{width:min(760px,100%);max-height:calc(100vh - 36px);display:flex;flex-direction:column;
+  background:var(--surface);border:1px solid var(--line-strong);border-radius:16px;overflow:hidden;
+  box-shadow:0 24px 64px rgba(0,0,0,.36)}
+.submit-head{display:flex;justify-content:space-between;gap:12px;padding:16px 18px 12px;border-bottom:1px solid var(--line)}
+.submit-head h3{margin:0 0 4px;font-size:16px}
+.submit-head p{margin:0;font-size:12.5px;color:var(--text-3);line-height:1.7}
+.submit-x{border:0;background:transparent;font-size:22px;line-height:1;color:var(--text-3);cursor:pointer;padding:0 4px}
+.submit-x:hover{color:var(--danger)}
+.submit-body{padding:14px 18px;overflow:auto;display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
+.submit-fld{display:flex;flex-direction:column;gap:5px}
+.submit-fld.wide{grid-column:1 / -1}
+.submit-fld label{font-size:12.5px;color:var(--text-2);font-weight:600}
+.submit-fld label em{font-style:normal;color:var(--danger);font-size:11px;font-weight:400}
+.submit-ipt{width:100%;font:inherit;font-size:13px;line-height:1.7;padding:8px 10px;border-radius:9px;
+  border:1px solid var(--line-strong);background:var(--panel);color:var(--text);resize:vertical}
+.submit-ipt:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
+.submit-tip{grid-column:1 / -1;font-size:12px;line-height:1.8;color:var(--text-3);
+  background:var(--track);border-radius:10px;padding:10px 12px}
+.submit-foot{display:flex;align-items:center;gap:10px;padding:12px 18px;border-top:1px solid var(--line);background:var(--panel)}
+.submit-foot #submitState{flex:1;font-size:12.5px;color:var(--text-3)}
+.submit-foot #submitState.err{color:var(--danger)}
+@media (max-width:700px){
+  .submit-mask{padding:0;align-items:flex-end}
+  .submit-panel{max-height:92vh;border-radius:16px 16px 0 0}
+  .submit-body{grid-template-columns:1fr}
+  .submit-foot{padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+}

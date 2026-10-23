@@ -92,8 +92,8 @@ document.getElementById('f').addEventListener('load', function () {
       ok(w.RP.engine.offlineDialogue() === false, '离线演绎默认关闭（产品里不允许脚本对话）');
       const lock = d.getElementById('composer').querySelector('.locked-panel.need-model');
       ok(!!lock, '输入区被替换成「本场需要模型才能开始」面板');
-      ok(!!lock && /都由大模型现场演绎|由大模型现场演绎/.test(lock.textContent), '面板写明对话由模型主导');
-      ok(!!lock && /去配置模型/.test(lock.textContent), '面板里有「去配置模型」按钮');
+      ok(!!lock && /本站不提供 AI 模型|调用你自己填的那家大模型/.test(lock.textContent), '面板写明本站不提供模型、用的是你填的模型');
+      ok(!!lock && /去填写 Key/.test(lock.textContent), '面板里有「去填写 Key」按钮');
       ok(!!lock && /扫描本机模型/.test(lock.textContent), '面板里有「扫描本机模型」按钮');
       ok(!d.getElementById('chatInput'), '没有输入框 —— 根本发不出话');
       let jumped2 = false;

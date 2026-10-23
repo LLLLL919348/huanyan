@@ -38,7 +38,7 @@ RP.profile = (function () {
     const view = document.getElementById('view-profile');
     const used = st.user.quota.used, daily = st.user.quota.daily;
     const left = RP.store.quotaLeft();
-    const pct = Math.round(used / daily * 100);
+    const pct = daily > 0 ? Math.round(used / daily * 100) : 0;   // 0 = 不限，别除零
     const roleplayConvs = st.convs.filter(function (c) { return c.kind === 'roleplay'; });
 
     view.innerHTML = '<div class="view-scroll"><div class="profile-wrap">' +
@@ -49,13 +49,13 @@ RP.profile = (function () {
         '<div class="profile-main">' +
           '<h2>' + RP.util.esc(st.user.name) + '</h2>' +
           '<p>成年人向剧情扮演 · 本地账号（无需注册，数据只在本机）</p>' +
-          '<div class="profile-tags"><span class="chip">每日额度 ' + daily + '</span>' +
+          '<div class="profile-tags"><span class="chip">对话不限次数</span>' +
             '<span class="chip">会话 ' + roleplayConvs.length + '</span>' +
             '<span class="chip">收藏 ' + st.favorites.length + '</span>' +
             '<span class="chip">' + (RP.api.enabled() ? '在线模型 · 已开启' : '本地演绎引擎') + '</span></div>' +
         '</div>' +
         '<div class="profile-side">' +
-          '<div class="st"><b>' + left + '</b><span>剩余额度</span></div>' +
+          '<div class="st"><b>∞</b><span>对话次数</span></div>' +
           '<div class="st"><b>' + (st.score || 0) + '</b><span>积分</span></div>' +
           '<div class="st"><b>' + roleplayConvs.reduce(function (n, c) { return n + c.turn; }, 0) + '</b><span>累计回合</span></div>' +
           '<div class="st"><b>' + st.favorites.length + '</b><span>收藏</span></div>' +
@@ -69,24 +69,17 @@ RP.profile = (function () {
       '<div class="acc">' +
 
         /* 1. 账号额度 */
-        accItem('quota', 'quota', '账号额度', '今日剩余 ' + left + ' / ' + daily + ' · 每日 0 点自动重置',
-          '<span class="mini-tag' + (left <= 0 ? ' dead' : ' hp') + '">' + (left <= 0 ? '已用尽' : left + ' 次') + '</span>',
-          '<div class="quota-panel">' +
-            '<div class="quota-ring" style="--p:' + pct + '">' +
-              '<div class="n"><b>' + left + '</b><span>剩余次数</span></div>' +
-            '</div>' +
-            '<div class="quota-info">' +
-              '<div class="row"><span>每日演绎额度</span><b>' + daily + ' 次</b></div>' +
-              '<div class="row"><span>今日已使用</span><b>' + used + ' 次</b></div>' +
-              '<div class="row"><span>额度重置</span><b>每日 00:00</b></div>' +
-              '<div class="row"><span>消费入口</span><b>无（本站不含任何付费项）</b></div>' +
-              (left <= 0 ? '<div class="row"><button class="btn sm" id="pfQuotaReset">重置演示额度</button><span style="color:var(--text-3)">演示环境专用</span></div>' : '') +
-            '</div>' +
-          '</div>' +
-          '<div class="note">额度只用来限制单日演绎回合数，避免一次聊太久。额度用尽不会锁你的历史会话，次日自动恢复；本站不提供充值、打赏、会员等任何付费路径，角色也不会向你索要任何东西。</div>') +
+        accItem('quota', 'quota', '对话与额度', '不限次数 · 想聊多久聊多久',
+          '<span class="mini-tag hp">不限</span>',
+          '<div class="quota-panel"><div class="quota-info">' +
+            '<div class="row"><span>对话次数</span><b>不限</b></div>' +
+            '<div class="row"><span>按量计费方</span><b>你自己选的模型服务商</b></div>' +
+            '<div class="row"><span>本站收费</span><b>无（不含任何付费项）</b></div>' +
+            '<div class="row"><span>Key 存在哪</span><b>只在你浏览器本地</b></div>' +
+          '</div></div>' +
+          '<div class="note">本站不提供 AI 模型，对话用的是你自己填的 API Key，费用由你和服务商直接结算，本站不经手、也不抽成。因此不做次数限制；如果你设了「经本站转发」，那也只是转发你的请求，模型仍是你的。</div>') +
 
-        /* 2. 我的装扮 */
-        accItem('dress', 'dress', '我的装扮', '主题皮肤 / 聊天气泡 / 头像框',
+accItem('dress', 'dress', '我的装扮', '主题皮肤 / 聊天气泡 / 头像框',
           '<span class="mini-tag">' + themeName(st.theme) + '</span>',
           '<div class="grid-cards">' +
             RP.catalog.themes.map(function (t) {

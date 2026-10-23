@@ -28,6 +28,7 @@ const DATA_DIR = path.join(ROOT, 'data');
 const UPLOAD_DIR = path.join(DATA_DIR, 'uploads');
 const RES_FILE = path.join(DATA_DIR, 'resources.json');
 const SET_FILE = path.join(DATA_DIR, 'settings.json');
+const SUB_FILE = path.join(DATA_DIR, 'submissions.json');   // 访客投稿（审核池）
 const RES_SRC = path.join(ROOT, 'assets', 'js', 'resources.js');   // 播种来源（只读）
 
 const PORT = Number(process.argv[2] || process.env.PORT || 5599);
@@ -184,7 +185,8 @@ function defaultSettings() {
     site: {
       name: '幻言',
       tagline: 'AI 角色扮演 · 陪聊',
-      dailyQuota: 60,
+      icp: '湘ICP备2026048625号-1',
+      dailyQuota: 0,          // 0 = 不限（站点不提供模型后没有额度这回事）
       footerNotes: [
         '成年人向虚构剧情扮演 · 内容均为虚构，请勿模仿',
         '本站只提供 AI 陪聊与角色扮演，AI 不具备任何实际操作权限',
@@ -416,6 +418,12 @@ function loadResources() {
   return null;
 }
 function saveResources() { writeJsonAtomic(RES_FILE, { resources: resources }); }
+function loadSubmissions() {
+  const d = readJson(SUB_FILE, null);
+  if (d && Array.isArray(d.items)) return { v: 1, items: d.items };
+  return { v: 1, items: [] };
+}
+function saveSubmissions(doc) { writeJsonAtomic(SUB_FILE, { v: 1, items: doc.items || [] }); }
 function saveSettings() { writeJsonAtomic(SET_FILE, settings); }
 
 function findIndex(id) {
@@ -683,13 +691,11 @@ async function handleApi(req, res, pathname) {
            ② 访客"浏览器直连自己的模型"模式（客户端要自己拼系统提示词）。
          所以：管理面可达（本机/白名单）就带 prompt，否则剥掉 —— 访客走服务端转发，
          提示词由服务端组装，浏览器永远拿不到全文。 */
-      const withPrompt = sec.adminReachable(req, settings || {});
-      const list = withPrompt ? resources : resources.map(function (r) {
-        const c = Object.assign({}, r);
-        delete c.prompt;
-        return c;
-      });
-      return ok(res, { ok: true, resources: list, promptIncluded: withPrompt });
+      /* ★ 2026-10-22：站点不再自营模型，访客一律用自己的 key 浏览器直连。
+         直连要客户端自己拼系统提示词，所以 resource.prompt 现在对访客下发。
+         代价是提示词可见（F12）—— 这是"本站不提供生成式 AI 服务"绕不开的取舍：
+         服务端不参与生成，就不能再独占提示词。 */
+      return ok(res, { ok: true, resources: resources, promptIncluded: true });
     }
     if (method === 'PUT') {
       let body;
@@ -880,7 +886,148 @@ async function handleApi(req, res, pathname) {
     return ok(res, { ok: true });
   }
 
-  /* 站点统计（浏览量 / 独立访客 / 本子进入次数 / 对话轮数）——只在管理面可见 */
+  /* ==========================================================================
+     投稿（有邀请码的访客可以提交自己的本子，进后台审核池）
+       POST /api/submit                访客提交（需要邀请码凭证）
+       GET  /api/submissions           后台读队列
+       POST /api/submissions/:id/approve  后台通过 → 变成资源（默认 upcoming）
+       POST /api/submissions/:id/reject   后台驳回（可带理由）
+     数据在 data/submissions.json，与 resources.json 分开，审核前不进线上资源库。
+     ========================================================================== */
+  if (pathname === '/api/submit' && method === 'POST') {
+    const iv2 = inviteState(req);
+    if (!iv2.unlocked) return fail(res, 403, '新增资源需要邀请码：请先在右上角「邀请码」里输入', method, pathname);
+    let b;
+    try { b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch (e) { return fail(res, 400, '请求体不是合法 JSON', method, pathname); }
+    const draft = (b && b.draft) || b || {};
+    const name = String(draft.name || '').trim();
+    const prompt = String(draft.prompt || '');
+    if (!name) return fail(res, 400, '缺少本子名', method, pathname);
+    if (name.length > 40) return fail(res, 400, '本子名太长（≤40 字）', method, pathname);
+    if (prompt.trim().length < 300) return fail(res, 400, '提示词太短（至少 300 字），审核通过后模型演不好', method, pathname);
+    const pick = function (k, max) {
+      const v = draft[k];
+      if (Array.isArray(v)) return v.map(function (x) { return String(x || '').slice(0, max || 400); }).filter(Boolean).slice(0, 30);
+      return v == null ? '' : String(v).slice(0, max || 4000);
+    };
+    const item = {
+      id: 'sub-' + Date.now().toString(36) + '-' + crypto.randomBytes(3).toString('hex'),
+      status: 'pending',
+      createdAt: Date.now(),
+      code: String(iv2.code || '').slice(0, 9) + '…',
+      draft: {
+        name: name,
+        subtitle: pick('subtitle', 60),
+        genres: pick('genres', 12),
+        brief: pick('brief', 80),
+        teaser: pick('teaser', 60),
+        intro: pick('intro', 1200),
+        world: pick('world', 2000),
+        userRole: pick('userRole', 1500),
+        plot: pick('plot', 3000),
+        character: {
+          name: String((draft.character && draft.character.name) || '').slice(0, 20),
+          title: String((draft.character && draft.character.title) || '').slice(0, 60),
+          age: String((draft.character && draft.character.age) || '').slice(0, 20),
+          appearance: String((draft.character && draft.character.appearance) || '').slice(0, 1200),
+          personality: String((draft.character && draft.character.personality) || '').slice(0, 1200),
+          speech: String((draft.character && draft.character.speech) || '').slice(0, 800),
+          desire: String((draft.character && draft.character.desire) || '').slice(0, 800),
+          taboo: (draft.character && Array.isArray(draft.character.taboo) ? draft.character.taboo : [])
+            .map(function (x) { return String(x || '').slice(0, 80); }).filter(Boolean).slice(0, 8)
+        },
+        plotReminder: pick('plotReminder', 200).slice(0, 12),
+        openingHints: pick('openingHints', 60).slice(0, 5),
+        prompt: prompt.slice(0, 12000)
+      }
+    };
+    const doc = loadSubmissions();
+    doc.items.unshift(item);
+    if (doc.items.length > 300) doc.items = doc.items.slice(0, 300);
+    saveSubmissions(doc);
+    logLine(method, pathname, '收到投稿 ' + item.id + '「' + name + '」');
+    return ok(res, { ok: true, id: item.id, note: '已提交，等站长审核；通过后会出现在资源列表里（先标为未开放）' });
+  }
+
+  if (pathname === '/api/submissions' && method === 'GET') {
+    const doc = loadSubmissions();
+    const q = /(?:^|&)status=([a-z]+)/.exec(req.url || '');
+    const want = q ? q[1] : '';
+    const list = want ? doc.items.filter(function (x) { return x.status === want; }) : doc.items;
+    return ok(res, { ok: true, submissions: list });
+  }
+
+  let subm = /^\/api\/submissions\/([^/]+)\/(approve|reject)$/.exec(pathname);
+  if (subm && method === 'POST') {
+    const sid = decodeURIComponent(subm[1]);
+    const action = subm[2];
+    let b = {};
+    try { b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); } catch (e) { b = {}; }
+    const doc = loadSubmissions();
+    const item = doc.items.filter(function (x) { return x.id === sid; })[0];
+    if (!item) return fail(res, 404, '投稿不存在：' + sid, method, pathname);
+    if (item.status !== 'pending') return fail(res, 409, '这条已经处理过了（' + item.status + '）', method, pathname);
+    if (action === 'reject') {
+      item.status = 'rejected';
+      item.reviewedAt = Date.now();
+      item.note = String(b.note || '').slice(0, 200);
+      saveSubmissions(doc);
+      logLine(method, pathname, '驳回投稿 ' + sid + (item.note ? '（' + item.note + '）' : ''));
+      return ok(res, { ok: true });
+    }
+    /* 通过：把投稿转成一条资源（默认 upcoming，站长在前台确认后再改 playable） */
+    const d = item.draft;
+    let id = String(b.id || '').trim().toLowerCase();
+    if (!/^[a-z0-9][a-z0-9-]{1,40}$/.test(id)) {
+      id = 'user-' + String(d.name).replace(/[^\u4e00-\u9fa5a-z0-9]+/gi, '-') + '-' + Date.now().toString(36).slice(-4);
+      id = id.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40) || ('user-' + Date.now().toString(36));
+    }
+    if (findIndex(id) !== -1) return fail(res, 409, '资源 id 已存在：' + id + '，请换一个', method, pathname);
+    const res1 = {
+      id: id,
+      name: d.name,
+      subtitle: d.subtitle || '',
+      genres: d.genres || [],
+      rating: '18+',
+      length: '短线',
+      status: (b.playable === true ? 'playable' : 'upcoming'),
+      difficulty: 2,
+      powerBalance: 'equal',
+      heat: 0,
+      players: 0,
+      cover: { motif: 'mist', palette: ['#141020', '#3a2436', '#c9873f'] },
+      brief: d.brief || '',
+      metaLines: [],
+      intro: d.intro || '',
+      teaser: d.teaser || '',
+      world: d.world || '',
+      character: d.character || {},
+      userRole: d.userRole || '',
+      plot: d.plot || '',
+      plotReminder: d.plotReminder || [],
+      openingHints: d.openingHints || [],
+      beats: [],
+      scenes: [],
+      rules: [],
+      hpRules: [],
+      plotRules: [],
+      behaviorRules: [],
+      replies: {},
+      prompt: d.prompt || '',
+      fromSubmission: item.id
+    };
+    resources.push(res1);
+    saveResources();
+    item.status = 'approved';
+    item.resourceId = id;
+    item.reviewedAt = Date.now();
+    saveSubmissions(doc);
+    logLine(method, pathname, '通过投稿 ' + sid + ' → 资源 ' + id);
+    return ok(res, { ok: true, resourceId: id, resource: res1, note: '已生成资源（状态 upcoming，可在资源编辑里改成可玩）' });
+  }
+
+
   if (pathname === '/api/stats' && method === 'GET') {
     const qi = req.url.indexOf('?');
     const q = qi === -1 ? '' : req.url.slice(qi + 1);
@@ -920,23 +1067,22 @@ async function handleApi(req, res, pathname) {
     return ok(res, { ok: true, build: Math.round(newest), files: count });
   }
 
-  /* 模型代理：优先用访客自己的配置（经本站转发），其次用站长的模型并计额度 */
+  /* 模型代理：只在「访客自带 key 但浏览器被 CORS 挡住」时用；站点本身不再有模型 */
   if (pathname === '/api/chat' && method === 'POST') {
     const vid = sec.visitorId(req, res);
-    /* ★ 邀请制准入：本站可以被人随便看到，但「开口」必须有凭证。
-       放在最前面 —— 没通过就不消耗额度、不组装提示词、不碰模型。
-       ★ 自带模型（userModel）也拦：不然把自己的 Key 填进来就绕过了邀请制。 */
-    const iv = inviteState(req);
-    if (!iv.unlocked) {
-      return fail(res, 403, '本站为邀请制：请先输入邀请码再开始对话' + (iv.reason && iv.reason !== '需要邀请码' ? '（' + iv.reason + '）' : ''),
-        method, pathname);
-    }
     const q0 = sec.quotaOf(vid);
     let body;
     try { body = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
     catch (e) { return fail(res, 400, '请求体不是合法 JSON', method, pathname); }
     const useOwn = !!(body.userModel && body.userModel.base && body.userModel.model);
-    if (!useOwn && q0.left <= 0) return fail(res, 429, '今日额度已用完（' + q0.limit + ' 次/天），明日 0 点重置', method, pathname);
+    /* ★ 2026-10-22：站点不再自营模型，对话一律用访客自己的 key。
+       所以这里不再用邀请码拦「对话」（拦不住：直连根本走不到这台服务器）；
+       邀请码的用途改成「新增资源」的资格。 */
+    if (!useOwn) {
+      return fail(res, 503,
+        '本站不提供模型：请到「我的 → 模型与安全」填你自己的 API Key（浏览器直连，key 不会上传到本站）',
+        method, pathname);
+    }
     /* 只接受「资源 id + 状态 + 对话历史」，系统提示词一律由服务端用自己的数据组装，
        避免这个接口被当成免费的通用大模型代理。 */
     const resId = String(body.resourceId || '');
@@ -1233,11 +1379,11 @@ const server = http.createServer(function (req, res) {
   /* ★ /api/invite-admin 是敏感的：它会把**明文邀请码**列出来（那等于门钥匙）。
      所以它和 stats / export 一样，算「只在管理面存在」的 GET。 */
   const isSensitiveGet = (pathname === '/api/export' || pathname === '/api/import' ||
-    pathname === '/api/stats' || pathname === '/api/invite-admin');
+    pathname === '/api/stats' || pathname === '/api/invite-admin' || pathname === '/api/submissions');
   /* 前台正常会用的 POST：对话、开局打点、兑换邀请码 —— 这三个不吃管理令牌
      （否则访客的统计、对话与准入全废）。/api/invite 只有「输入邀请码」这一个动作，
      真正的校验在 handleApi 里，且失败按 IP 限流。 */
-  const PUBLIC_POSTS = ['/api/chat', '/api/play', '/api/invite'];
+  const PUBLIC_POSTS = ['/api/chat', '/api/play', '/api/invite', '/api/submit'];
   const isAdminPage = pathname === '/admin' || pathname === '/admin/' || pathname === '/admin/index.html';
   const isAdminAsset = pathname === '/admin/admin.css' || pathname === '/admin/admin.js';
   const settingsNow = settings || {};             // 启动时已载入；两道门共用

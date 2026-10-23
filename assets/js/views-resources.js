@@ -239,7 +239,7 @@ RP.resources = (function () {
             return '<div class="filter-row"><span class="filter-label">' + row.label + '</span><div class="pills">' +
               row.values.map(function (v) { return pill(row.key, v, f[row.key]); }).join('') + '</div></div>';
           }).join('') +
-          '<div class="filter-foot"><span id="resCount"></span><button class="btn sm ghost" id="resReset">清除筛选</button></div>' +
+          '<div class="filter-foot"><span id="resCount"></span><button class="btn sm ghost" id="resReset">清除筛选</button><button class="btn sm" id="resNew" title="有邀请码就能自己写一个本子，提交后等站长审核">＋ 新增资源</button></div>' +
         '</div>' +
         '<div class="res-grid" id="resGrid"></div>' +
       '</div></div>';
@@ -305,6 +305,11 @@ RP.resources = (function () {
   function refresh() { paintPills(); paintGrid(); }
 
   function bind(view) {
+    /* 新增资源：有邀请码才让写；没码先弹邀请码框 */
+    const newBtn = view.querySelector('#resNew');
+    if (newBtn) newBtn.addEventListener('click', function () {
+      if (RP.submit) RP.submit.open();
+    });
     const search = view.querySelector('#resSearch');
     let t = null;
     search.addEventListener('input', function () {

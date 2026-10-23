@@ -25,6 +25,7 @@
     <button class="tab" data-tab="backup">数据备份</button>
     <button class="tab" data-tab="stats">访问统计</button>
     <button class="tab" data-tab="invite">邀请码</button>
+    <button class="tab" data-tab="review">审稿</button>
   </nav>
 
   <div class="topbar-right">
@@ -335,6 +336,29 @@
           <li>对方打开网站 → 右上角「邀请码」→ 输入一次 → 这台设备之后就能直接对话了。</li>
           <li>要收回：把那一行「停用」，或者直接删除 —— 已发出的凭证随之作废。</li>
         </ol>
+      </fieldset>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================ 审稿 ============================ -->
+<section class="page" id="page-review">
+  <div class="actionbar actionbar-slim">
+    <div class="actionbar-info"><strong>投稿审核</strong><span class="hint" id="reviewHint">读取中…</span></div>
+    <div class="actionbar-btns">
+      <button class="btn btn-sm" id="btnReviewPending">只看待审</button>
+      <button class="btn btn-sm" id="btnReviewAll">全部</button>
+      <button class="btn btn-sm btn-primary" id="btnReviewReload">刷新</button>
+    </div>
+  </div>
+  <div class="form-scroll">
+    <div class="pad">
+      <fieldset class="card">
+        <legend>待审投稿</legend>
+        <div id="reviewList"><p class="note">读取中…</p></div>
+        <p class="note">访客在资源页点「＋ 新增资源」提交，需要有效邀请码。通过之后会生成一条资源（状态 <b>upcoming</b>），
+          再到「资源编辑」里把状态改成 playable、补封面与场景即可上线。数据文件：<code>data/submissions.json</code>。</p>
       </fieldset>
     </div>
   </div>

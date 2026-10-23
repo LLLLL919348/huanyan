@@ -570,12 +570,23 @@ RP.chat = (function () {
         '<button class="btn" id="btnAssistant">回到会话助手</button></div></div>';
     } else if (conv.kind === 'roleplay' && !hasModel() && !RP.engine.offlineDialogue()) {
       /* 产品铁律：角色对话必须由模型主导 —— 没有模型就不给开口，也不许脚本硬凑 */
-      box.innerHTML = '<div class="locked-panel need-model"><h4>本场需要模型才能开始</h4>' +
-        '<p>这里的所有对话都由大模型现场演绎（角色台词、状态结算、剧情推进都听它的），' +
-        '所以没有可用模型时，本场不会用脚本来凑台词 —— 当前没有任何回复是"编"出来的。</p>' +
-        '<p class="hint-strong">接上模型只要一分钟：填一次自己的 Key 就能玩，本机的 Ollama / LM Studio 也能直接扫描（都免费）；' +
-        '也可以用站长配好的模型（每日额度 ' + RP.store.get().user.quota.daily + ' 次）。</p>' +
-        '<div class="row"><button class="btn primary" id="btnGoModel">去配置模型</button>' +
+      box.innerHTML = '<div class="locked-panel need-model"><h4>先填一个你自己的模型 Key</h4>' +
+        '<p><b>本站不提供 AI 模型</b>：所有台词都是调用你自己填的那家大模型生成的，' +
+        '费用你和服务商直接结算，本站不经手、不抽成，也不做对话次数限制。' +
+        '没有 Key 就没有台词 —— 这里不会用脚本来凑，你看到的每一句都是模型真的说出来的。</p>' +
+        '<div class="need-model-steps">' +
+          '<div class="nm-step"><b>1</b><span>选一家服务商，注册并创建 API Key（形如 <code>sk-…</code>）。下面四家都有免费额度，够你玩很久：' +
+            '<br>· <b>智谱 GLM</b>（<code>glm-4-flash</code> 免费档）→ bigmodel.cn' +
+            '<br>· <b>通义千问</b>（阿里云百炼，有免费额度）→ bailian.console.aliyun.com' +
+            '<br>· <b>魔搭 ModelScope</b>（每天有免费调用次数）→ modelscope.cn' +
+            '<br>· <b>硅基流动 SiliconFlow</b>（部分小模型长期免费）→ cloud.siliconflow.cn</span></div>' +
+          '<div class="nm-step"><b>2</b><span>点下面的「去填写 Key」→ 在「模型与安全」里<b>选供应商</b>（会自动带出接口地址和模型名）→ 粘贴 Key → 点「测试连接」看到回复就说明通了。</span></div>' +
+          '<div class="nm-step"><b>3</b><span>回到这个对话页，直接开口说第一句话即可。</span></div>' +
+        '</div>' +
+        '<p class="hint-2">关于直连：默认是<b>浏览器直连</b>，请求从你的电脑直接发到服务商，本站服务器看不到你的 Key、也看不到对话内容。' +
+        '但如果你的服务商不允许浏览器直连（例如智谱），就在「模型与安全」里打开「<b>经本站转发</b>」—— 那时代理会把请求转一下，模型和 Key 仍然是你自己的。</p>' +
+        '<p class="hint-2">本机的 Ollama / LM Studio 也能直接扫描，完全免费、不联网。</p>' +
+        '<div class="row"><button class="btn primary" id="btnGoModel">去填写 Key</button>' +
         '<button class="btn" id="btnScanModel">扫描本机模型</button>' +
         '<button class="btn" data-goto="resources">换一个本子</button></div></div>';
     } else if (conv.actMute > 0) {

@@ -106,8 +106,10 @@ RP.store = (function () {
 
   function dailyQuota() {
     const s = RP.settings ? RP.settings.get() : null;
-    const n = s && s.site && Number(s.site.dailyQuota);
-    return n > 0 ? n : RP.catalog.dailyQuota;
+    const raw = s && s.site ? s.site.dailyQuota : undefined;
+    /* 0 = 不限（站点不自营模型后就是这个值）；只有真的没配才回落到内置默认 */
+    if (raw !== undefined && raw !== null && raw !== '' && Number(raw) >= 0) return Number(raw);
+    return RP.catalog.dailyQuota;
   }
 
   function assistantSeed() {
@@ -164,7 +166,7 @@ RP.store = (function () {
       resState: {},
       convs: [assistantSeed()],
       activeConv: 'conv-assistant',
-      api: { enabled: false, base: 'https://api.openai.com/v1', key: '', model: '', temp: 0.85, direct: false }
+      api: { enabled: false, base: 'https://api.openai.com/v1', key: '', model: '', temp: 0.85, direct: true }
     };
   }
 
@@ -188,6 +190,8 @@ RP.store = (function () {
     s.user = Object.assign(d.user, s.user || {});
     s.user.quota = Object.assign(d.user.quota, (s.user && s.user.quota) || {});
     s.api = Object.assign(d.api, s.api || {});
+    /* 站点不再自营模型，默认走浏览器直连；想经本站转发的自己开 */
+    if (s.api.direct === undefined) s.api.direct = true;
     /* 旧版本道具字段迁移：props → inventory，并补齐积分与领取记录 */
     if (s.props && !s.inventory) s.inventory = s.props;
     delete s.props;
@@ -240,7 +244,8 @@ RP.store = (function () {
     /* 站点设置里的额度下发后调用一次：让额度上限始终跟随后台配置 */
     syncQuota: function () {
       const want = dailyQuota();
-      if (!(want > 0) || state.user.quota.daily === want) return false;
+      /* 0 = 不限，也要同步过来 */
+      if (!(want >= 0) || state.user.quota.daily === want) return false;
       state.user.quota.daily = want;
       state.user.quota.used = Math.min(state.user.quota.used || 0, want);
       save();

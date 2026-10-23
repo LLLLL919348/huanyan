@@ -584,7 +584,8 @@ RP.api = (function () {
     /* 浏览器直连需要客户端自己拼系统提示词；服务端对访客不下发 resource.prompt，
        这种情况下自动回退到"经本站转发"（提示词由服务端组装，功能不打折）。
        ★ 邀请制开启且本机未通过时也强制走转发：直连会整个绕过服务端准入。 */
-    const useProxy = mode() === 'server' || (mode() === 'own' && (!cfg.direct || !resource.prompt || gate.enabled));
+    /* 站点不再自营模型：只有用户自己关掉「直连」时才经本站转发（有些服务商不放行跨域） */
+    const useProxy = mode() === 'own' && !cfg.direct;
     if (useProxy) {
       const payload = { resourceId: resource.id, state: serverState(conv, opts), messages: history };
       if (mode() === 'own') {
@@ -669,7 +670,7 @@ RP.api = (function () {
     ];
     /* ① 经本站转发（服务端自己组装助手的系统提示词）
        ★ 邀请制开启时一律走转发：助手也是对话，同样要过准入 */
-    if (mode() !== 'own' || !cfg.direct || gate.enabled) {
+    if (mode() !== 'own' || !cfg.direct) {
       const payload = { resourceId: ASSISTANT_ID, assistant: true, messages: history };
       if (mode() === 'own') payload.userModel = { base: cfg.base, key: cfg.key, model: cfg.model, temp: cfg.temp };
       const r = await fetch('/api/chat', {

@@ -460,3 +460,16 @@ body { display: flex; flex-direction: column; overflow: hidden; }
   letter-spacing:.06em;cursor:pointer}
 .inv-code:hover{background:rgba(47,111,224,.14)}
 #inviteMade .note{font-size:12px;line-height:2}
+
+
+/* ---------- 审稿 ---------- */
+.review-card{border:1px solid rgba(74,62,44,.16);border-radius:10px;padding:12px 14px;margin-bottom:12px;background:#fffdf9}
+.review-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.review-head b{font-size:14px}
+.review-head .hint{font-size:11.5px;color:var(--ink-3);margin:0}
+.review-body .kv{margin:0 0 8px}
+.review-body details summary{cursor:pointer;font-size:12.5px;color:var(--ink-2);margin:6px 0}
+.review-body h4{margin:10px 0 4px;font-size:12.5px;color:var(--ink-2)}
+.review-prompt{white-space:pre-wrap;font-family:var(--mono);font-size:11.5px;line-height:1.75;
+  background:#f7f4ec;border:1px solid rgba(74,62,44,.12);border-radius:8px;padding:10px;max-height:320px;overflow:auto}
+.review-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px dashed rgba(74,62,44,.14)}

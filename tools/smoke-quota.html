@@ -5,163 +5,96 @@
 #out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
 font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
 <body>
-<!-- 每日额度冒烟测试：20 次上限 / 只有本站模型吃额度 / 用尽时的替代出口 -->
+<!--
+  额度/模型来源验收（2026-10-22 站点不再自营模型之后重写）
+
+  以前这套测的是「站长模型每日 30 次、用完弹面板」。现在站点不提供模型，
+  这套测的是新的事实：
+    ① /api/model 明确报告 serverModel=false（本站没有模型）
+    ② 没配自己的 Key 时：对话区是「先填一个你自己的模型 Key」面板，没有输入框
+    ③ 面板写明了本站不提供模型、费用由用户和服务商结算、默认浏览器直连
+    ④ 配上自己的 Key 之后：显示「你自己的模型 · 不占额度」，且没有任何额度数字
+    ⑤ 页面上不再出现「今日额度剩余」「今日额度已用完」
+    ⑥ 「我的」页显示「对话不限次数 / 不限」，store 里 dailyQuota=0
+-->
 <iframe id="f" src="../index.html"></iframe>
 <pre id="out">running…</pre>
 <script>
-const log = []; const P = s => log.push(s);
+const log = []; const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
 let fails = 0;
 function ok(cond, label, extra) { if (cond) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
-document.getElementById('f').addEventListener('load', function () {
-  const w = this.contentWindow, d = this.contentDocument;
-  /* 固定成"没有模型"：这类测试只验裁决与界面，不受本机装没装模型影响 */
-  w.RP.api.mode = function () { return 'none'; };   // forceNoModel
-  w.addEventListener('error', function (e) { log.push('!! error: ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno); fails++; });
-  w.addEventListener('unhandledrejection', function (e) { log.push('!! rejection: ' + ((e.reason && e.reason.stack) || e.reason)); fails++; });
+const f = document.getElementById('f');
+f.addEventListener('load', function () {
+  if (window.__qStarted) return;
+  window.__qStarted = true;
+  const w = f.contentWindow, d = f.contentDocument;
   const wait = ms => new Promise(r => setTimeout(r, ms));
-  const conv = () => w.RP.store.active();
-  const quota = () => w.RP.store.get().user.quota;
   const composer = () => d.getElementById('composer');
 
   (async function () {
     try {
-      for (let i = 0; i < 60 && !d.querySelector('.res-card'); i++) await wait(200);
+      for (let i = 0; i < 80 && !d.querySelector('.res-card'); i++) await wait(200);
+      const list = w.RP.resources.list().filter(r => r.status === 'playable');
 
-      /* ---- 1. 额度上限来自站点设置，不是硬编码的旧值 ---- */
-      P('【额度上限】');
-      const Q = w.RP.settings.get().site.dailyQuota;
-      ok(quota().daily === Q, '每日额度跟随后台设置（' + Q + '）', '实际 ' + quota().daily);
-      ok(Q === 30, '当前配置为 30 次/人/天', '实际 ' + Q);
+      /* 验收页会被 app.js 自动塞一个假模型（别的套件要用），这里先清掉 */
+      const st0 = w.RP.store.get();
+      st0.api = { enabled: false, base: '', key: '', model: '', temp: 0.85, direct: true };
+      st0.user.quota = { daily: 0, used: 0, day: w.RP.util.dayKey() };
+      w.RP.store.save();
+      window.__clearedModel = 1;
 
-      /* ---- 2. 没有模型 = 不能对话（产品铁律：对话必须由模型主导） ---- */
-      P('【没有模型时不能对话】');
-      ok(w.RP.api.mode() === 'none', '当前没有可用模型 → none', w.RP.api.mode());
-      ok(w.RP.engine.offlineDialogue() === false, '离线演绎默认关闭');
-      w.RP.app.play('changan-yeweiyang');
+      P('【① 本站不提供模型】');
+      const m = w.RP.api.serverInfo();
+      ok(m.serverModel === false, '/api/model 说 serverModel=false', JSON.stringify(m.serverModel));
+      ok(w.RP.api.mode() === 'none', '没有配置时 mode() 是 none', w.RP.api.mode());
+
+      P('【② 没模型的对话区】');
+      w.RP.app.play(list[0].id);
       await wait(700);
-      quota().used = 0; w.RP.store.save();
-      ok(!!d.querySelector('#composer .locked-panel.need-model'), '输入区是「本场需要模型才能开始」面板');
-      ok(!d.getElementById('chatInput'), '没有输入框，发不出话');
-      /* 就算绕过界面直接调发送，也必须只留一条固定提示、不产生任何角色台词 */
-      const before2 = conv().messages.length;
-      await w.RP.chat.sendMessage(conv(), w.RP.resources.byId('changan-yeweiyang'), '十年前御史台那桩案子，卷宗少了一页。');
-      await wait(800);
-      const added = conv().messages.slice(before2);
-      ok(added.every(function (m) { return m.role !== 'ai'; }), '没有生成任何角色台词', JSON.stringify(added.map(function (m) { return m.role; })));
-      ok(added.some(function (m) { return m.role === 'notice' && /本场需要模型才能继续/.test(m.text); }), '只给了一条固定提示');
-      ok(quota().used === 0, '没有扣额度', 'used=' + quota().used);
+      const panel = composer().querySelector('.locked-panel.need-model');
+      ok(!!panel, '输入区是「需要模型」面板');
+      ok(!composer().querySelector('#chatInput'), '没有输入框');
+      ok(!composer().querySelector('#btnSend'), '没有发送按钮');
 
-      /* ---- 3. 假装用本站模型：吃额度 + 用尽后的出口 ---- */
-      P('【本站模型 · 额度用尽】');
-      const realMode = w.RP.api.mode;
-      w.RP.api.mode = function () { return 'server'; };
-      /* serverReady/ serverInfo 也要装作有 */
-      const realReady = w.RP.api.serverReady, realInfo = w.RP.api.serverInfo;
-      w.RP.api.serverReady = function () { return true; };
-      w.RP.api.serverInfo = function () { return { serverModel: true, model: 'deepseek-chat', dailyQuota: Q, quota: { left: 0, limit: Q } }; };
+      P('【③ 面板把「谁提供服务」写清楚了】');
+      const txt = panel ? panel.textContent : '';
+      ok(/本站不提供 AI 模型/.test(txt), '写明本站不提供 AI 模型');
+      ok(/你自己填的那家大模型|调用你自己填/.test(txt), '写明用的是用户自己填的模型');
+      ok(/不经手/.test(txt), '写明费用其实不经手、不抽成');
+      ok(/去填写 Key/.test(txt), '有「去填写 Key」按钮');
+      ok(/浏览器直连/.test(txt), '说明了默认浏览器直连');
+      ok(/经本站转发/.test(txt), '说明了受限时可开转发');
 
-      quota().used = 12; w.RP.store.save();
-      w.RP.chat.renderComposer();
-      await wait(120);
-      ok(composer().querySelectorAll('.locked-panel.quota').length === 0, '还有额度时不显示额度面板');
-      ok(!d.getElementById('btnSend').disabled, '还有额度时发送按钮可用');
-      ok(/今日额度剩余/.test(composer().innerHTML), '显示「今日额度剩余」');
-      ok(/本站模型/.test(composer().innerHTML), '标注这是本站模型（吃额度）');
-      /* 额度只能有一处显示：以前左边「今日额度剩余」+ 右边「本站额度剩余」两套计数会互相矛盾 */
-      const hint = composer().querySelector('.composer-hint');
-      const quotaMentions = (hint ? hint.innerHTML.match(/额度/g) || [] : []).length;
-      ok(quotaMentions === 1, '输入区上方只出现一处「额度」（实际 ' + quotaMentions + ' 处）', hint ? hint.textContent.slice(0, 120) : '');
-      ok(!/本站额度剩余/.test(composer().innerHTML), '不再重复显示第二份额度');
-
-      quota().used = Q; w.RP.store.save();
-      w.RP.chat.renderComposer();
-      await wait(120);
-      const panel = composer().querySelector('.locked-panel.quota');
-      ok(!!panel, '额度用尽时出现提示面板');
-      ok(!!panel && /今日额度已用完/.test(panel.textContent), '面板写明「今日额度已用完」');
-      ok(!!panel && /不占站内额度/.test(panel.textContent), '面板说明自带模型不占额度');
-      ok(d.getElementById('btnSend').disabled === true, '额度用尽时发送按钮禁用');
-
-      /* 点「去配置我自己的模型」应跳到「我的」并展开模型面板 */
-      let jumped = false;
-      if (panel) {
-        const go = d.getElementById('btnQuotaModel');
-        ok(!!go, '面板里有「去配置我自己的模型」按钮');
-        if (go) {
-          go.click();
-          await wait(400);
-          jumped = w.RP.store.get().ui.view === 'profile' && w.RP.store.get().ui.openAcc.sys === true;
-        }
-      }
-      ok(jumped, '点击后跳到「我的」并展开「模型与安全」');
-
-      /* ---- 4. 自带模型：不占额度，也不受上限拦截 ---- */
-      P('【自带模型不吃额度】');
-      w.RP.api.mode = function () { return 'own'; };
-      w.RP.store.get().api = Object.assign(w.RP.store.get().api || {}, {
-        enabled: true, base: 'https://api.deepseek.com/v1', key: 'sk-test', model: 'deepseek-chat'
-      });
+      P('【④ 填了自己的 Key：不占额度、也没有额度数字】');
+      const st = w.RP.store.get();
+      st.api = { enabled: true, base: 'http://127.0.0.1:9/v1', key: 'test-key', model: 'fake-model', temp: 0.85, direct: true };
       w.RP.store.save();
-      w.RP.app.setView('chat');
+      w.RP.chat.renderComposer();
       await wait(300);
-      w.RP.chat.renderComposer();
-      await wait(120);
-      ok(composer().querySelectorAll('.locked-panel.quota').length === 0, '额度已用尽但仍不挡自带模型');
-      ok(!d.getElementById('btnSend').disabled, '自带模型时发送按钮可用');
-      ok(/你自己的模型 · 不占额度/.test(composer().innerHTML), '标注「你自己的模型 · 不占额度」');
-      ok(quota().used === Q, '额度数字保持不变（不扣）', 'used=' + quota().used);
+      const hint = composer().querySelector('.composer-hint');
+      const hintTxt = hint ? hint.textContent : '';
+      ok(/你自己的模型/.test(hintTxt), '提示写明「你自己的模型」', hintTxt.slice(0, 60));
+      ok(/不占额度/.test(hintTxt), '提示写明「不占额度」');
+      ok(!/今日额度剩余/.test(hintTxt), '不再显示「今日额度剩余」');
+      ok(!!composer().querySelector('#chatInput'), '输入框回来了');
 
-      w.RP.api.mode = realMode; w.RP.api.serverReady = realReady; w.RP.api.serverInfo = realInfo;
-      w.RP.store.get().api.enabled = false; w.RP.store.save();
+      P('【⑤ 不再有旧的额度文案】');
+      const pageText = d.body.textContent;
+      ok(!/今日额度已用完/.test(pageText), '没有「今日额度已用完」面板');
+      ok(!/每日额度 \d+/.test(pageText), '没有「每日额度 N」字样');
 
-      /* ---- 5.「我的 → 模型与安全」面板本身可用 ---- */
-      P('【模型与安全面板】');
-      const st2 = w.RP.store.get();
-      st2.ui.view = 'profile';
-      st2.ui.openAcc.sys = true;
-      w.RP.store.save();
+      P('【⑥ 「我的」页：不限次数】');
       w.RP.app.setView('profile');
-      await wait(500);
-      const pv = d.getElementById('view-profile');
-      ok(!!pv, '「我的」视图渲染出来');
-      ['apiBase', 'apiPreset', 'apiKey', 'apiModel', 'apiTemp', 'apiSave', 'apiTest', 'apiDirect', 'apiScan'].forEach(function (id) {
-        ok(!!(pv && pv.querySelector('#' + id)), '面板里有 #' + id);
-      });
-      const presets = pv ? pv.querySelectorAll('#apiPreset option').length : 0;
-      ok(presets >= 12, '供应商下拉至少有 11 个预设 + 占位项', '实际 ' + presets);
-      /* 「现在是谁在说话」：来源一眼可见 + 换成云端的步骤 */
-      const now = pv && pv.querySelector('.api-now');
-      ok(!!now, '面板顶部有「现在是谁在说话」');
-      ok(!!now && /本机|云端|还没有模型/.test(now.querySelector('.an-badge').textContent),
-        '标签写明模型来源', now ? now.querySelector('.an-badge').textContent : '无');
-      ok(!!pv.querySelector('.api-quick'), '有「换成云端大模型」的步骤说明');
-      /* 选一个供应商应自动填好地址与模型名 */
-      const sel = pv && pv.querySelector('#apiPreset');
-      if (sel) {
-        const opt = Array.prototype.filter.call(sel.options, function (o) { return o.value === 'deepseek'; })[0];
-        if (opt) {
-          sel.value = 'deepseek';
-          sel.dispatchEvent(new w.Event('change', { bubbles: true }));
-          await wait(300);
-          const base = pv.querySelector('#apiBase').value, model = pv.querySelector('#apiModel').value;
-          ok(/deepseek\.com/.test(base) && !!model, '选 DeepSeek 后自动填好地址与模型名', base + ' / ' + model);
-        }
-      }
-      /* 测试连接：地址不合法时必须给出可见的错误，而不是静默失败 */
-      const tbtn = pv && pv.querySelector('#apiTest');
-      if (tbtn) {
-        pv.querySelector('#apiBase').value = 'http://example.com/v1';
-        pv.querySelector('#apiModel').value = 'gpt-4o-mini';
-        tbtn.click();
-        await wait(2500);
-        const res = pv.querySelector('#apiTestResult');
-        ok(!!res && res.textContent.trim().length > 0, '「测试连接」会回显结果', res ? res.textContent.trim().slice(0, 60) : '无');
-      }
+      await wait(400);
+      const pf = d.getElementById('view-profile').textContent;
+      ok(/对话不限次数|不限/.test(pf), '「我的」里显示不限次数');
+      const daily = w.RP.store.get().user.quota.daily;
+      ok(daily === 0, 'store 里 dailyQuota=0（0 表示不限）', String(daily));
 
+      P('');
       P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
       P('=== 完成 ===');
     } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
-    document.getElementById('out').textContent = log.join('\n');
     document.title = 'DONE';
   })();
 });

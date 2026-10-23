@@ -55,7 +55,8 @@ RP.app = (function () {
     document.title = (s.name || '幻言') + ' · AI 角色扮演';
     const foot = document.querySelector('.global-foot');
     if (foot && Array.isArray(s.footerNotes) && s.footerNotes.length) {
-      foot.innerHTML = s.footerNotes.map(function (t) { return '<span>' + RP.util.esc(t) + '</span>'; }).join('<span class="sep">·</span>');
+      foot.innerHTML = s.footerNotes.map(function (t) { return '<span>' + RP.util.esc(t) + '</span>'; }).join('<span class="sep">·</span>') +
+        (s.icp ? '<span class="sep">·</span><span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">' + RP.util.esc(s.icp) + '</a></span>' : '');
     }
   }
 
@@ -246,10 +247,17 @@ RP.app = (function () {
 
   function paintQuota() {
     const st = RP.store.get();
-    const left = RP.store.quotaLeft();
     const box = document.getElementById('quotaMini');
     if (!box) return;
+    /* 0 = 不限（站点不自营模型后就是这个值）：既然没有额度，就别在顶栏显示一个 0 */
+    if (!(st.user.quota.daily > 0)) {
+      box.style.display = 'none';
+      box.innerHTML = '';
+      return;
+    }
+    const left = RP.store.quotaLeft();
     const pct = Math.round(left / st.user.quota.daily * 100);
+    box.style.display = '';
     box.innerHTML = '<span>今日额度</span><b>' + left + '</b><span class="bar"><i style="width:' + pct + '%"></i></span>';
   }
 
@@ -568,8 +576,24 @@ RP.app = (function () {
     }
   }
 
+  /* 仅供 tools/ 下的验收页使用：它们会伪造 /api/chat 的 SSE 响应来测整条链路，
+     而站点现在不自营模型（mode()==='none' 时输入框是锁着的，走不到发送那一步）。
+     所以当本页被 /tools/ 下的页面以 iframe 嵌入时，先塞一个「自己的模型」配置。
+     判定条件两层：有父窗口 + 父页面在 /tools/ 下；正常访问站点时永远不生效。 */
+  function installHarnessModel() {
+    try {
+      if (window.parent === window) return;
+      if (String(window.parent.location.pathname || '').indexOf('/tools/') !== 0) return;
+      const st = RP.store.get();
+      if (st.api && st.api.model === '__harness') return;
+      st.api = { enabled: true, base: 'http://127.0.0.1:9/v1', key: 'harness', model: '__harness', temp: 0.85, direct: false };
+      RP.store.save();
+    } catch (e) { /* 跨源拿不到父页面 → 当作正常访问 */ }
+  }
+
   /* 启动顺序：设置 → 邀请制 → 资源 → 渲染 */
   async function boot() {
+    installHarnessModel();
     await RP.settings.load();
     RP.store.syncQuota();
     await RP.api.loadServerModel();

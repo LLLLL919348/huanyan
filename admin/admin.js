@@ -1854,6 +1854,107 @@
     return { init: init, info: info };
   })();
 
+
+  /* ------------------------------ 审稿 ------------------------------ */
+  /* 访客投稿 → 这里过一遍 → 通过就变成资源。判定全在服务端，这页只是入口。 */
+  const reviewTab = (function () {
+    let items = [];
+    let onlyPending = true;
+
+    function fmt(ts) {
+      if (!ts) return '—';
+      const d = new Date(Number(ts));
+      const p = function (n) { return n < 10 ? '0' + n : '' + n; };
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    function esc2(x) { return esc(String(x == null ? '' : x)); }
+
+    function card(it) {
+      const d = it.draft || {};
+      const ch = d.character || {};
+      const badge = it.status === 'pending' ? '<span class="btn btn-sm" style="pointer-events:none;border-color:#2f6fe0;color:#2f6fe0">待审</span>'
+        : it.status === 'approved' ? '<span class="btn btn-sm" style="pointer-events:none">已通过</span>'
+          : '<span class="btn btn-sm" style="pointer-events:none;border-color:#c5353f;color:#c5353f">已驳回</span>';
+      return '<div class="review-card" data-id="' + esc2(it.id) + '">' +
+        '<div class="review-head"><b>' + esc2(d.name) + '</b>' + badge +
+          '<span class="hint">' + esc2(it.code) + ' · ' + fmt(it.createdAt) + ' · ' + esc2(d.subtitle || '') + '</span></div>' +
+        '<div class="review-body">' +
+          '<div class="kv">' +
+            '<dt>一句话简介</dt><dd>' + esc2(d.brief || '（空）') + '</dd>' +
+            '<dt>角色</dt><dd>' + esc2(ch.name || '（空）') + ' · ' + esc2(ch.title || '') + '</dd>' +
+            '<dt>提示词长度</dt><dd>' + String((d.prompt || '').length) + ' 字' +
+              (it.resourceId ? ' · 已生成资源 <code>' + esc2(it.resourceId) + '</code>' : '') + '</dd>' +
+            '<dt>开局提醒</dt><dd>' + String((d.plotReminder || []).length) + ' 条</dd>' +
+          '</div>' +
+          '<details><summary>展开全文（提示词 / 世界观 / 剧情）</summary>' +
+            '<h4>世界观</h4><p class="note">' + esc2(d.world) + '</p>' +
+            '<h4>玩家身份</h4><p class="note">' + esc2(d.userRole) + '</p>' +
+            '<h4>剧情主线</h4><p class="note">' + esc2(d.plot) + '</p>' +
+            '<h4>开局提醒</h4><p class="note">' + (d.plotReminder || []).map(esc2).join('<br>') + '</p>' +
+            '<h4>提示词</h4><pre class="review-prompt">' + esc2(d.prompt) + '</pre>' +
+          '</details>' +
+        '</div>' +
+        (it.status === 'pending'
+          ? '<div class="review-foot">' +
+              '<label class="chk" style="margin:0"><input type="checkbox" class="rv-playable"> <span>通过后直接设为「可游玩」</span></label>' +
+              '<input class="ipt rv-id" placeholder="资源 id（可留空，自动生成）" style="max-width:240px">' +
+              '<button class="btn btn-sm btn-primary" data-rv="ok">通过</button>' +
+              '<button class="btn btn-sm" data-rv="no">驳回</button>' +
+            '</div>'
+          : '<div class="review-foot"><span class="hint">' + (it.note ? '驳回理由：' + esc2(it.note) : '') + '</span></div>') +
+        '</div>';
+    }
+
+    function render() {
+      const box = $('#reviewList');
+      if (!box) return;
+      const list = onlyPending ? items.filter(function (x) { return x.status === 'pending'; }) : items;
+      box.innerHTML = list.length ? list.map(card).join('') : '<p class="note">' + (onlyPending ? '没有待审的投稿。' : '还没有任何投稿。') + '</p>';
+      $('#reviewHint').textContent = '待审 ' + items.filter(function (x) { return x.status === 'pending'; }).length + ' 条 · 共 ' + items.length + ' 条';
+    }
+
+    function load() {
+      return API.get('/api/submissions').then(function (d) {
+        items = d.submissions || [];
+        render();
+      }).catch(function (e) {
+        $('#reviewList').innerHTML = '<p class="note">读取失败：' + esc2(e.message) + '</p>';
+      });
+    }
+
+    function act(id, action, payload) {
+      return API.post('/api/submissions/' + encodeURIComponent(id) + '/' + action, payload || {})
+        .then(function (r) {
+          toast(action === 'approve' ? ('已通过，生成资源 ' + (r.resourceId || '')) : '已驳回', 'ok');
+          return load();
+        }).catch(function (e) { toast('操作失败：' + e.message, 'err'); });
+    }
+
+    function init() {
+      const list = $('#reviewList');
+      if (!list) return;
+      list.addEventListener('click', function (e) {
+        const b = e.target.closest('[data-rv]');
+        if (!b) return;
+        const cardEl = b.closest('.review-card');
+        const id = cardEl.dataset.id;
+        if (b.dataset.rv === 'no') {
+          const note = prompt('驳回理由（会显示给投稿人看的那句话，可留空）', '');
+          if (note === null) return;
+          act(id, 'reject', { note: note });
+          return;
+        }
+        const playable = cardEl.querySelector('.rv-playable');
+        const idInput = cardEl.querySelector('.rv-id');
+        act(id, 'approve', { id: (idInput && idInput.value || '').trim(), playable: !!(playable && playable.checked) });
+      });
+      const b1 = $('#btnReviewReload'); if (b1) b1.addEventListener('click', load);
+      const b2 = $('#btnReviewPending'); if (b2) b2.addEventListener('click', function () { onlyPending = true; render(); });
+      const b3 = $('#btnReviewAll'); if (b3) b3.addEventListener('click', function () { onlyPending = false; render(); });
+    }
+    return { init: init, load: load };
+  })();
+
   /* ------------------------------ 标签页 ------------------------------ */
   let activeTab = 'resources';
   function switchTab(name) {
@@ -1867,6 +1968,7 @@
     if (name === 'backup') backupTab.info();
     if (name === 'stats') statsTab.info();
     if (name === 'invite') inviteTab.info();
+    if (name === 'review') reviewTab.load();
   }
 
   /* ------------------------------ 访问统计 ------------------------------ */
@@ -1934,6 +2036,7 @@
     backupTab.init();
     statsTab.init();
     inviteTab.init();
+    reviewTab.init();
     $('#tabs').addEventListener('click', function (e) {
       const t = e.target.closest('.tab');
       if (t) switchTab(t.dataset.tab);
@@ -1951,7 +2054,7 @@
       /* 支持 /admin?tab=settings 这样的直链（也方便自动化截图核对） */
       const qs = new URLSearchParams(location.search);
       const want = qs.get('tab');
-      if (want && ['resources', 'settings', 'backup', 'stats', 'invite'].indexOf(want) !== -1) switchTab(want);
+      if (want && ['resources', 'settings', 'backup', 'stats', 'invite', 'review'].indexOf(want) !== -1) switchTab(want);
       /* ?focus=<区块 id / 字段名>：载入后把该区块滚进视野（方便直链与自动化截图） */
       const focus = qs.get('focus');
       if (focus) {

@@ -5,13 +5,14 @@
   "site": {
     "name": "幻言",
     "tagline": "AI 角色扮演 · 陪聊",
-    "dailyQuota": 30,
+    "dailyQuota": 0,
     "footerNotes": [
       "成年人向虚构剧情扮演 · 内容均为虚构，请勿模仿",
       "本站只提供 AI 陪聊与角色扮演，AI 不具备任何实际操作权限",
       "不含充值 / 打赏等任何付费入口"
     ],
-    "compactPrompt": "auto"
+    "compactPrompt": "auto",
+    "icp": "湘ICP备2026048625号-1"
   },
   "assistant": {
     "name": "会话助手",

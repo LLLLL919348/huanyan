@@ -8,6 +8,8 @@
 data/model.json
 # 切回本机 ollama 用的备份（同样是本机配置）
 data/model.local.json
+# 原站长的模型 key（下线自营模型后留档，绝不上传）
+data/model.private.json
 
 # --- 运行期状态：每次运行都会变，且含访客标识/统计 ---
 data/quota.json

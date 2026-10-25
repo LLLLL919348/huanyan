@@ -214,7 +214,11 @@ RP.resources = (function () {
     const f = st.ui.filters;
     const rows = [
       { key: 'genre', label: '题材', values: ['全部'].concat(genres()) },
-      { key: 'rating', label: '分级', values: ['全部', '16+', '18+'] },
+      { key: 'rating', label: '分级', values: ['全部'].concat((function () {
+            const seen = [];
+            all().forEach(function (r) { if (r.rating && seen.indexOf(r.rating) === -1) seen.push(r.rating); });
+            return seen.sort();
+          })()) },
       { key: 'length', label: '体量', values: ['全部', '长线', '短线'] },
       { key: 'sort', label: '排序', values: ['可玩优先', '热度', '名称'] }
     ];
@@ -222,7 +226,7 @@ RP.resources = (function () {
     return '' +
       '<div class="view-scroll"><div class="res-wrap">' +
         '<div class="res-hero">' +
-          '<div><h1>资源库</h1><p>成年人向剧情角色扮演 · 选一个本子，进入它的世界</p></div>' +
+          '<div><h1>资源库</h1><p>仅面向年满十八周岁用户 · 选一个本子，进入它的世界</p></div>' +
           '<div class="hero-stats">' +
             '<div class="st"><b>' + all().length + '</b><span>角色本</span></div>' +
             '<div class="st"><b>' + play + '</b><span>可游玩</span></div>' +

@@ -569,7 +569,7 @@ RP.app = (function () {
 
   /* ------------------------------ 成年人确认 ------------------------------
      只做一次、只存在本机（localStorage），不采集任何个人信息、不联网。
-     定位是成年人向虚构剧情，把「未成年人请离开」明确写出来。
+     定位是仅面向成年人的虚构内容：按法规写明"不向未成年人提供"，不复述剧情元素。
      后台「全局设置」里 site.ageGate=false 可以关掉。 */
   const AGE_KEY = 'rp_age_confirmed';
   function ageGate() {
@@ -584,12 +584,12 @@ RP.app = (function () {
     mask.className = 'age-mask';
     mask.id = 'ageMask';
     mask.innerHTML = '<div class="age-card">' +
-      '<h2>未成年人不适宜</h2>' +
-      '<p>本站是<b>成年人向</b>的虚构剧情角色扮演站点：内容涉及猜忌、胁迫、死亡与情欲张力（但不含露骨性描写）。</p>' +
-      '<p>如果你未满 18 周岁，请立即离开。</p>' +
-      '<p class="age-fine">继续即表示你已满 18 周岁，并知悉全部内容为虚构。本站不收集你的姓名、身份证号或手机号，这条确认只记在你自己这台设备的浏览器里。</p>' +
-      '<div class="age-row"><button class="btn primary" id="ageOk">我已满 18 周岁，进入</button>' +
-      '<button class="btn" id="ageNo">未满 18 周岁</button></div>' +
+      '<h2>仅限成年人使用</h2>' +
+      '<p>依据《中华人民共和国未成年人保护法》《未成年人网络保护条例》及《网络信息内容生态治理规定》，本站不向未满十八周岁的未成年人提供内容与服务。</p>' +
+      '<p>请确认你已年满十八周岁后再继续使用。</p>' +
+      '<p class="age-fine">本站内容均为虚构创作，不收集姓名、证件号码、手机号码等身份信息；本次确认仅保存在你当前使用的浏览器中。</p>' +
+      '<div class="age-row"><button class="btn primary" id="ageOk">我已年满十八周岁</button>' +
+      '<button class="btn" id="ageNo">我未满十八周岁</button></div>' +
       '</div>';
     document.body.appendChild(mask);
     document.documentElement.style.overflow = 'hidden';
@@ -599,8 +599,9 @@ RP.app = (function () {
       close();
     });
     mask.querySelector('#ageNo').addEventListener('click', function () {
-      mask.querySelector('.age-card').innerHTML = '<h2>请离开</h2><p>本站只面向成年人。请关闭这个页面；如果你需要帮助，请联系你信任的成年人。</p>' +
-        '<p class="age-fine">（直接关闭标签页即可。）</p>';
+      mask.querySelector('.age-card').innerHTML = '<h2>请勿继续使用</h2>' +
+        '<p>本站不向未成年人提供内容与服务，请关闭本页面。</p>' +
+        '<p class="age-fine">如需帮助，可告知监护人、老师，或联系当地未成年人保护机构。</p>';
     });
   }
 

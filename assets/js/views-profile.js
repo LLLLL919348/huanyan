@@ -48,7 +48,7 @@ RP.profile = (function () {
         '<div class="profile-av" style="background:linear-gradient(145deg,var(--accent),var(--purple))">' + RP.util.esc(st.user.initial) + '</div>' +
         '<div class="profile-main">' +
           '<h2>' + RP.util.esc(st.user.name) + '</h2>' +
-          '<p>成年人向剧情扮演 · 本地账号（无需注册，数据只在本机）</p>' +
+          '<p>仅面向年满十八周岁用户 · 本地账号（无需注册，数据只在本机）</p>' +
           '<div class="profile-tags"><span class="chip">对话不限次数</span>' +
             '<span class="chip">会话 ' + roleplayConvs.length + '</span>' +
             '<span class="chip">收藏 ' + st.favorites.length + '</span>' +

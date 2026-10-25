@@ -433,7 +433,7 @@ window.RP_RESOURCES = [
       "权谋",
       "历史"
     ],
-    "rating": "16+",
+    "rating": "18+",
     "length": "长线",
     "status": "playable",
     "difficulty": 2,
@@ -657,7 +657,7 @@ window.RP_RESOURCES = [
       "悬疑",
       "情感"
     ],
-    "rating": "16+",
+    "rating": "18+",
     "length": "长线",
     "status": "playable",
     "difficulty": 2,
@@ -881,7 +881,7 @@ window.RP_RESOURCES = [
       "校园",
       "抉择"
     ],
-    "rating": "16+",
+    "rating": "18+",
     "length": "长线",
     "status": "playable",
     "heat": 8700,
@@ -1329,7 +1329,7 @@ window.RP_RESOURCES = [
       "日常",
       "情感"
     ],
-    "rating": "16+",
+    "rating": "18+",
     "length": "长线",
     "status": "playable",
     "heat": 8400,
@@ -1777,7 +1777,7 @@ window.RP_RESOURCES = [
       "谍战",
       "悬疑"
     ],
-    "rating": "16+",
+    "rating": "18+",
     "length": "长线",
     "status": "upcoming",
     "heat": 8105,
@@ -1810,7 +1810,7 @@ window.RP_RESOURCES = [
       "蒸汽朋克",
       "冒险"
     ],
-    "rating": "16+",
+    "rating": "18+",
     "length": "长线",
     "status": "upcoming",
     "heat": 7420,

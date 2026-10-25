@@ -1757,6 +1757,17 @@
         .catch(function (e) { $('#reportList').innerHTML = '<p class="note">读取失败：' + esc2(e.message) + '</p>'; });
     }
 
+    function openManualReport() {
+      const kind = prompt('举报类型（违法有害信息 / 未成年人相关 / 侵犯个人信息 / 色情低俗 / 诈骗与引流 / 其他）', '违法有害信息');
+      if (kind === null) return;
+      const detail = prompt('举报内容（谁、在群里说了什么／发了什么、时间）', '');
+      if (!detail) return;
+      const target = prompt('涉及本子或页面（可留空）', '') || '';
+      API.post('/api/reports', { kind: kind.trim() || '其他', detail: detail, target: target, source: 'QQ群' })
+        .then(function () { toast('已登记进台账', 'ok'); load(); })
+        .catch(function (er) { toast('登记失败：' + er.message, 'err'); });
+    }
+
     function init() {
       const list = $('#reportList');
       if (!list) return;
@@ -1782,6 +1793,7 @@
           .then(function () { toast('已标记处理', 'ok'); load(); })
           .catch(function (er) { toast('失败：' + er.message, 'err'); });
       });
+      const b0 = $('#btnReportManual'); if (b0) b0.addEventListener('click', openManualReport);
       const b1 = $('#btnReportReload'); if (b1) b1.addEventListener('click', load);
       const b2 = $('#btnReportOpen'); if (b2) b2.addEventListener('click', function () { onlyOpen = true; render(); });
       const b3 = $('#btnReportAll'); if (b3) b3.addEventListener('click', function () { onlyOpen = false; render(); });

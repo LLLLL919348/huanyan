@@ -188,6 +188,8 @@ function defaultSettings() {
       ageGate: true,
       reportEmail: '',
       reportPhone: '',
+      reportGroup: '',
+      reportGroupUrl: '',
       dailyQuota: 0,          // 0 = 不限（站点不提供模型后没有额度这回事）
       footerNotes: [
         '仅面向年满十八周岁用户 · 内容均为虚构创作',
@@ -848,6 +850,32 @@ async function handleApi(req, res, pathname) {
     const want = q ? q[1] : '';
     const list = want ? doc.items.filter(function (x) { return x.status === want; }) : doc.items;
     return ok(res, { ok: true, reports: list });
+  }
+
+  /* 手动登记（后台把群里的举报补录进台账） */
+  if (pathname === '/api/reports' && method === 'POST') {
+    let b;
+    try { b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch (e) { return fail(res, 400, '请求体不是合法 JSON', method, pathname); }
+    const detail = String(b.detail || '').trim().slice(0, 2000);
+    if (!detail) return fail(res, 400, '请填写举报内容', method, pathname);
+    const doc2 = loadReports();
+    const item2 = {
+      id: 'rep-' + Date.now().toString(36) + '-' + crypto.randomBytes(3).toString('hex'),
+      ts: Number(b.ts) || Date.now(),
+      kind: String(b.kind || '其他').slice(0, 20),
+      target: String(b.target || '').slice(0, 120),
+      detail: detail,
+      contact: String(b.contact || '').slice(0, 120),
+      ip: '（站外：' + String(b.source || 'QQ群').slice(0, 20) + '）',
+      ua: 'manual',
+      status: 'open',
+      source: 'manual'
+    };
+    doc2.items.unshift(item2);
+    saveReports(doc2);
+    logLine(method, pathname, '手动登记举报 ' + item2.id);
+    return ok(res, { ok: true, id: item2.id });
   }
 
   let rep = /^\/api\/reports\/([^/]+)\/(handle|delete)$/.exec(pathname);

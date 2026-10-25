@@ -39,12 +39,16 @@ RP.legal = (function () {
         const st = (RP.settings.get() || {}).site || {};
         const em = String(st.reportEmail || '').trim();
         const ph = String(st.reportPhone || '').trim();
-        if (!em && !ph) return '';
-        let s2 = '<p class="age-fine">也可以直接联系：';
-        if (em) s2 += '邮箱 <a href="mailto:' + RP.util.esc(em) + '">' + RP.util.esc(em) + '</a>';
-        if (em && ph) s2 += ' · ';
-        if (ph) s2 += '电话 ' + RP.util.esc(ph);
-        return s2 + '（工作日 48 小时内回复）</p>';
+        const gp = String(st.reportGroup || '').trim();
+        const gu = String(st.reportGroupUrl || '').trim();
+        const bits = [];
+        if (em) bits.push('邮箱 <a href="mailto:' + RP.util.esc(em) + '">' + RP.util.esc(em) + '</a>');
+        if (ph) bits.push('电话 ' + RP.util.esc(ph));
+        if (gp) bits.push(gu
+          ? 'QQ 群 <a href="' + RP.util.esc(gu) + '" target="_blank" rel="noopener noreferrer">' + RP.util.esc(gp) + '</a>'
+          : 'QQ 群 ' + RP.util.esc(gp));
+        if (!bits.length) return '';
+        return '<p class="age-fine">也可以直接联系：' + bits.join(' · ') + '（工作日常 48 小时内回复）</p>';
       })() +
       '<div class="report-form">' +
         '<label>举报类型<select id="repKind">' + KINDS.map(function (k) { return '<option>' + k + '</option>'; }).join('') + '</select></label>' +

@@ -637,7 +637,33 @@ RP.app = (function () {
     if (pv) pv.addEventListener('click', function () { if (RP.legal) RP.legal.openPrivacy(); });
   })();
 
+  /* 顶栏登录状态：未登录显示「登录」，已登录显示脱敏邮箱 */
+  function paintAuthChip() {
+    const btn = document.getElementById('btnLogin');
+    if (!btn) return;
+    const info = RP.auth ? RP.auth.info() : { me: null };
+    if (info.me) {
+      btn.textContent = info.me.email;
+      btn.classList.add('on');
+      btn.title = '已登录 · 点击退出';
+    } else {
+      btn.textContent = '登录';
+      btn.classList.remove('on');
+      btn.title = '登录 / 注册（邮箱验证码）';
+    }
+  }
   function init() {
+    /* 顶栏登录按钮 */
+    const loginBtn = document.getElementById('btnLogin');
+    if (loginBtn) loginBtn.addEventListener('click', function () {
+      const info = RP.auth ? RP.auth.info() : { me: null };
+      if (info.me) {
+        if (confirm('已登录：' + info.me.email + '\n要退出登录吗？')) RP.auth.logout();
+      } else if (RP.auth) {
+        RP.auth.open({ force: false });
+      }
+    });
+    paintAuthChip();
     applyAppearance();
     bind();
     paintQuota();
@@ -698,7 +724,7 @@ RP.app = (function () {
   return {
     init: init, boot: boot, setView: setView, play: play, toast: toast, modal: modal, closeModal: closeModal,
     popover: popover, closePopover: closePopover, applyAppearance: applyAppearance,
-    paintQuota: paintQuota, paintNavDot: paintNavDot, applySiteTexts: applySiteTexts,
+    paintQuota: paintQuota, paintNavDot: paintNavDot, applySiteTexts: applySiteTexts, refreshAuthChip: paintAuthChip,
     themeMode: themeMode, isLight: isLight, toggleMode: toggleMode,
     toggleFocus: toggleFocus, setFocus: setFocus, focusOn: focusOn, paintFocus: paintFocus, applyFont: applyFont,
     autoFocus: { schedule: autoFocusSchedule, cancel: autoFocusCancel, state: AUTO_FOCUS },

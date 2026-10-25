@@ -129,6 +129,7 @@ RP.auth = (function () {
         requireLogin = d.requireLogin === true;
         m.remove();
         document.documentElement.style.overflow = '';
+        if (RP.app && RP.app.refreshAuthChip) RP.app.refreshAuthChip();
         if (RP.app && RP.app.toast) RP.app.toast('已登录 · ' + (me ? me.email : ''), 'ok');
         if (opts.onDone) opts.onDone(me);
       } catch (e) {
@@ -148,6 +149,7 @@ RP.auth = (function () {
   async function logout() {
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) { }
     me = null;
+    if (RP.app && RP.app.refreshAuthChip) RP.app.refreshAuthChip();
     if (RP.app && RP.app.toast) RP.app.toast('已退出登录', '');
     open({ force: true });
   }

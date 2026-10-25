@@ -65,7 +65,7 @@ RP.profile = (function () {
           '<button class="btn sm" id="pfAssistant">打开会话助手</button>' +
           (RP.auth && RP.auth.info().me
             ? '<button class="btn sm" id="pfLogout">退出登录（' + RP.util.esc(RP.auth.info().me.email) + '）</button>'
-            : '<button class="btn sm" id="pfLogin">登录</button>') +
+            : '<button class="btn sm primary" id="pfLogin">登录 / 注册</button>') +
         '</div>' +
       '</div>' +
 
@@ -404,6 +404,9 @@ accItem('dress', 'dress', '我的装扮', '主题皮肤 / 聊天气泡 / 头像�
       const play2 = t.closest('[data-play2]');
       if (play2) { RP.app.play(play2.dataset.play2); return; }
 
+      /* 登录 / 退出（放在委托链里，才和这个页面的其它按钮同一条路） */
+      if (t.closest('#pfLogin')) { if (RP.auth) RP.auth.open({ force: false }); return; }
+      if (t.closest('#pfLogout')) { if (RP.auth) RP.auth.logout(); return; }
       if (t.closest('#pfRename')) {
         RP.app.modal({
           title: '修改称呼', body: '这个称呼会出现在对话气泡与角色对你的称呼里。',

@@ -48,6 +48,8 @@ User=admin
 Group=admin
 WorkingDirectory=/home/admin/huanyan
 EnvironmentFile=/home/admin/huanyan/.env
+# 额外变量（SMTP 凭据、FORCE_HTTPS 等）：部署脚本不会覆盖这个文件
+EnvironmentFile=-/home/admin/huanyan/.env.extra
 ExecStart=/usr/bin/node /home/admin/huanyan/server/server.js 80
 Restart=always
 RestartSec=3

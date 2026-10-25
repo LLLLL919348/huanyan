@@ -1479,7 +1479,8 @@ function handler(req, res) {
   if (String(process.env.FORCE_HTTPS) === 'true' && !req.socket.encrypted) {
     const u0 = String(req.url || '/');
     const host0 = String(req.headers.host || '').replace(/:\d+$/, '');
-    if (host0 && u0.indexOf('/.well-known/acme-challenge/') !== 0 && u0 !== '/api/health') {
+    const isLoopHost = /^(127\.|localhost$|\[::1\]|::1$)/i.test(host0);
+    if (host0 && !isLoopHost && !sec.isLocal(req) && u0.indexOf('/.well-known/acme-challenge/') !== 0 && u0 !== '/api/health') {
       res.writeHead(301, { Location: 'https://' + host0 + u0 });
       return res.end();
     }

@@ -523,29 +523,50 @@ accItem('dress', 'dress', '我的装扮', '主题皮肤 / 聊天气泡 / 头像�
         RP.store.save();
         RP.app.toast('已启用你自己的模型：<b>' + RP.util.esc(st.api.model) + '</b>（刷新后本场立即生效）', 'ok');
         render();
+        /* 保存后自动自检 */
+        const tb = view.querySelector('#apiTest');
+        if (tb && a.enabled) setTimeout(function () { tb.click(); }, 300);
         if (RP.chat) RP.chat.renderComposer();
         return;
       }
       if (t.closest('#apiTest')) {
         const base = (view.querySelector('#apiBase').value || '').trim();
         const key = (view.querySelector('#apiKey').value || '').trim();
+        const model = (view.querySelector('#apiModel').value || '').trim();
         const box = view.querySelector('#apiTestResult');
         if (!base) { RP.app.toast('请先填接口地址', 'warn'); return; }
-        if (box) box.innerHTML = '<div class="note">正在连接 ' + RP.util.esc(base) + ' ……</div>';
-        fetch('/api/test-model', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base: base, key: key })
-        }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); }).then(function (x) {
+        if (!key) { RP.app.toast('请先填 Key', 'warn'); return; }
+        if (box) box.innerHTML = '<div class="note">正在检测两条通路（直连 / 转发）…</div>';
+        RP.api.selfTest({ base: base, key: key, model: model }).then(function (r) {
           if (!box) return;
-          if (!x.ok || !x.d.ok) { box.innerHTML = '<div class="note" style="color:var(--danger)">连接失败：' + RP.util.esc((x.d && x.d.error) || '未知错误') + '</div>'; return; }
-          const models = x.d.models || [];
-          box.innerHTML = '<div class="note" style="color:var(--ok)">连接成功 ✅ 检测到 ' + models.length + ' 个模型' +
-            (models.length ? '，点一个填进模型名：<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' +
-              models.slice(0, 12).map(function (m) {
-                return '<button class="btn sm" data-pickmodel="' + RP.util.esc(m) + '">' + RP.util.esc(m) + '</button>';
-              }).join('') + '</div>' : '') + '</div>';
+          const line = function (label, ok, extra) {
+            return '<div class="note" style="color:' + (ok ? 'var(--ok)' : 'var(--danger)') + '">'
+              + (ok ? '✅ ' : '❌ ') + label + (extra ? '：' + RP.util.esc(extra) : '') + '</div>';
+          };
+          let html = line('浏览器直连', !!(r.direct && r.direct.ok), r.direct && r.direct.ok ? '可用，Key 不经过本站' : (r.direct && r.direct.detail) || '');
+          html += line('经本站转发', !!(r.relay && r.relay.ok), r.relay && r.relay.ok ? '可用' : (r.relay && r.relay.detail) || '');
+          html += '<div class="note" style="margin-top:6px">' + RP.util.esc(r.hint || '') + '</div>';
+          if (r.direct && r.direct.ok) html += '<div class="note">建议把「浏览器直连」的勾选<b>打开</b>：Key 只在你本机，不经过服务器。</div>';
+          else if (r.relay && r.relay.ok) html += '<div class="note">建议把「浏览器直连」的勾选<b>取消</b>（走转发）。</div>';
+          box.innerHTML = html;
+
+          /* 转发可用时，顺手把模型列表拉出来，点一下就能填 */
+          if (r.relay && r.relay.ok) {
+            fetch('/api/test-model', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ base: base, key: key })
+            }).then(function (x) { return x.json().then(function (d) { return { ok: x.ok, d: d }; }); }).then(function (x) {
+              const models = (x.d && x.d.models) || [];
+              if (!models.length) return;
+              box.innerHTML += '<div class="note" style="margin-top:6px">检测到 ' + models.length + ' 个模型，点一个填进模型名：</div>'
+                + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">'
+                + models.slice(0, 12).map(function (m) {
+                    return '<button class="btn sm" data-pickmodel="' + RP.util.esc(m) + '">' + RP.util.esc(m) + '</button>';
+                  }).join('') + '</div>';
+            }).catch(function () { });
+          }
         }).catch(function (e) {
-          if (box) box.innerHTML = '<div class="note" style="color:var(--danger)">连接失败：' + RP.util.esc(e.message || String(e)) + '</div>';
+          if (box) box.innerHTML = '<div class="note" style="color:var(--danger)">检测失败：' + RP.util.esc(RP.api.describeFetchError(e)) + '</div>';
         });
         return;
       }

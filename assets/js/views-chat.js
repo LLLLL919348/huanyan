@@ -1055,7 +1055,7 @@ RP.chat = (function () {
         const isHolder = last && last.meta && last.meta.streaming;
         const msg = {
           role: 'notice',
-          text: '模型调用失败：' + (err && err.message ? err.message : err) +
+          text: '模型调用失败：' + (RP.api.describeFetchError ? RP.api.describeFetchError(err) : (err && err.message ? err.message : err)) +
             ' —— 这一轮没有生成回复（不会用脚本顶替），修好后可以重试这一轮。',
           meta: { tone: 'danger', retry: text }
         };
@@ -1071,7 +1071,7 @@ RP.chat = (function () {
       } catch (err) {
         pushMsg(conv, {
           role: 'notice',
-          text: '模型调用失败：' + (err && err.message ? err.message : err) +
+          text: '模型调用失败：' + (RP.api.describeFetchError ? RP.api.describeFetchError(err) : (err && err.message ? err.message : err)) +
             ' —— 这一轮没有生成回复（不会用脚本顶替），修好后可以重试这一轮。',
           meta: { tone: 'danger', retry: text }
         });

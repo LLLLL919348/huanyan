@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>pending</title>
+<style>html,body{margin:0;height:100%}iframe{width:100%;height:100%;border:0}
+#out{position:fixed;left:0;top:0;right:0;max-height:100%;overflow:auto;background:#fff;color:#111;
+font:12px/1.6 Consolas,monospace;margin:0;padding:8px;white-space:pre-wrap;z-index:9}</style></head>
+<body>
+<!-- 自检工具 + 一本子一对话 验收 -->
+<iframe id="f" src="../index.html"></iframe>
+<pre id="out">running…</pre>
+<script>
+const log = []; let fails = 0;
+const P = s => { log.push(s); document.getElementById('out').textContent = log.join('\n'); };
+function ok(c, label, extra) { if (c) P('  ✓ ' + label); else { fails++; P('  ✗ ' + label + (extra ? ' — ' + extra : '')); } }
+const f = document.getElementById('f');
+f.addEventListener('load', function () {
+  if (window.__s) return; window.__s = 1;
+  const w = f.contentWindow, d = f.contentDocument;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  (async function () {
+    try {
+      for (let i = 0; i < 80 && !d.querySelector('.res-card'); i++) await wait(200);
+
+      P('【① 自检函数存在并可调用】');
+      ok(typeof w.RP.api.selfTest === 'function', 'RP.api.selfTest 存在');
+      ok(typeof w.RP.api.describeFetchError === 'function', 'describeFetchError 存在');
+      const fake = w.RP.api.describeFetchError(new TypeError('Failed to fetch'));
+      ok(/经本站转发/.test(fake), 'Failed to fetch 会提示去开「经本站转发」', fake.slice(0, 40) + '…');
+      const r = await w.RP.api.selfTest({ base: 'http://127.0.0.1:9/v1', key: 'k', model: 'm' });
+      ok(typeof r.ok === 'boolean' && r.direct && r.relay, '自检同时返回直连与转发两条结果',
+        'direct=' + JSON.stringify(r.direct && r.direct.ok) + ' relay=' + JSON.stringify(r.relay && r.relay.ok));
+
+      P('【② 一个资源只保留一个对话】');
+      const list = w.RP.resources.list().filter(x => x.status === 'playable');
+      const r1 = list[0].id;
+      w.RP.app.play(r1);
+      await wait(300);
+      const c1 = w.RP.store.get().convs.filter(c => c.resourceId === r1).length;
+      ok(c1 === 1, '第一次进入：1 个会话', c1 + ' 个');
+      const firstId = w.RP.store.get().convs.filter(c => c.resourceId === r1)[0].id;
+      w.RP.app.setView('resources');
+      await wait(200);
+      w.RP.app.play(r1);
+      await wait(300);
+      const cs = w.RP.store.get().convs.filter(c => c.resourceId === r1);
+      ok(cs.length === 1, '再进同一个本子：还是 1 个会话（没有新建）', cs.length + ' 个');
+      ok(cs[0] && cs[0].id === firstId, '复用的是同一个会话', cs[0] ? cs[0].id.slice(-6) : '');
+      ok(w.RP.store.get().activeConv === firstId, '并且切换到了这个会话');
+      const r2 = list[1].id;
+      w.RP.app.play(r2);
+      await wait(300);
+      const total = w.RP.store.get().convs.filter(c => c.kind === 'roleplay').length;
+      ok(total === 2, '换一个本子：变成 2 个会话', total + ' 个');
+
+      P('');
+      P(fails === 0 ? '=== 全部通过 ===' : '=== 失败 ' + fails + ' 项 ===');
+      P('=== 完成 ===');
+    } catch (e) { P('!! 异常：' + (e && e.stack ? e.stack : e)); P('=== 完成 ==='); }
+    document.title = 'DONE';
+  })();
+});
+</script>
+</body></html>

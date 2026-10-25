@@ -21,6 +21,62 @@ RP.api = (function () {
     RP.store.mirrorQuota(Number(q.limit) || 0, Number(q.left) || 0);
   }
 
+  /* 浏览器直连失败时，浏览器只给 "Failed to fetch"，分不清是 CORS、断网还是域名错。
+     这里统一翻译成用户能照做的动作。 */
+  function describeFetchError(e) {
+    const msg = String((e && e.message) || e || '');
+    if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) {
+      return '浏览器直连失败（Failed to fetch）——最常见的原因是这家服务商不允许网页直接调用（CORS）。'
+        + '到「我的 → 模型与安全」把「经本站转发」打开，再点一次「测试连接」；'
+        + '如果转发了还失败，就是 Key 或接口地址不对。';
+    }
+    if (/401|403/.test(msg)) return 'Key 被服务商拒绝了（401/403）：检查 Key 有没有复制全、有没有过期。';
+    if (/404/.test(msg)) return '接口地址不对（404）：地址一般要以 /v1 或 /api/paas/v4 结尾。';
+    if (/timeout|超时/i.test(msg)) return '请求超时：网络不稳，或者服务商那边在排队。';
+    return msg || '未知错误';
+  }
+
+  /* 自检：先试浏览器直连，再让服务器代试一次；告诉用户哪条路能通 */
+  async function selfTest(cfgOverride) {
+    const st = RP.store.get();
+    const cfg = Object.assign({}, st.api, cfgOverride || {});
+    const base = String(cfg.base || '').replace(/\/+$/, '');
+    const model = String(cfg.model || '');
+    const key = String(cfg.key || '');
+    const out = { direct: null, relay: null, hint: '' };
+    if (!base || !model || !key) return { ok: false, direct: null, relay: null, hint: '先把接口地址、模型名、Key 都填上' };
+
+    /* 1) 直连：只问 /models，成本最低 */
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(function () { ctrl.abort(); }, 10000);
+      const r = await fetch(base + '/models', { headers: { Authorization: 'Bearer ' + key }, signal: ctrl.signal });
+      clearTimeout(t);
+      out.direct = { ok: r.ok, status: r.status };
+      if (!r.ok) out.direct.detail = 'HTTP ' + r.status;
+    } catch (e) {
+      out.direct = { ok: false, cors: true, detail: describeFetchError(e) };
+    }
+
+    /* 2) 转发：让服务端用它自己的网络去试 */
+    try {
+      const r2 = await fetch('/api/test-model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base: base, key: key, model: model })
+      });
+      const d2 = await r2.json().catch(function () { return null; });
+      out.relay = { ok: !!(r2.ok && d2 && d2.ok), status: r2.status, detail: (d2 && (d2.error || d2.note)) || '' };
+    } catch (e) {
+      out.relay = { ok: false, detail: describeFetchError(e) };
+    }
+
+    if (out.direct.ok) out.hint = '直连可用：保持「经本站转发」关闭即可（Key 不经过本站）。';
+    else if (out.relay.ok) out.hint = '直连被拒（服务商不允许网页调用），但转发可用：请打开「经本站转发」。';
+    else out.hint = '两条路都不通：' + (out.relay.detail || out.direct.detail || '检查 Key / 地址 / 余额');
+    return Object.assign({ ok: out.direct.ok || out.relay.ok }, out);
+  }
+
   function serverReady() { return !!server.serverModel; }
   function serverInfo() { return server; }
   async function loadServerModel() {
@@ -640,7 +696,7 @@ RP.api = (function () {
     completeAssistant: completeAssistant, buildAssistantPrompt: buildAssistantPrompt,
     parseState: parseState,
     testConnection: testConnection, sanitize: sanitize, globalRules: globalRules,
-    loadServerModel: loadServerModel, loadQuota: loadQuota, serverReady: serverReady, serverInfo: serverInfo,
+    loadServerModel: loadServerModel, selfTest: selfTest, describeFetchError: describeFetchError, loadQuota: loadQuota, serverReady: serverReady, serverInfo: serverInfo,
     mode: mode, ownReady: ownReady, PROVIDERS: PROVIDERS, FREE_TIERS: FREE_TIERS
   };
 })();

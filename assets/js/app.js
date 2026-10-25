@@ -334,6 +334,17 @@ RP.app = (function () {
   function play(id) {
     const r = RP.resources.byId(id);
     if (!r || r.status !== 'playable') return;
+    /* ★ 一个本子只保留一个会话：已经有就直接进去，不新建（旧的多会话会让人分不清进度） */
+    const st0 = RP.store.get();
+    const existing = st0.convs.filter(function (c) { return c.kind === 'roleplay' && c.resourceId === r.id; })[0];
+    if (existing) {
+      st0.activeConv = existing.id;
+      RP.store.save();
+      setView('chat');
+      toast('回到「<b>' + RP.util.esc(r.name) + '</b>」原来的那一场对话（每个本子只有一场）', '');
+      paintNavDot();
+      return r;
+    }
     const conv = RP.chat.create(r);
     setView('chat');
     const resource = r;

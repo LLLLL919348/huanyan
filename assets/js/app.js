@@ -510,9 +510,6 @@ RP.app = (function () {
       toast('选择一张角色卡，点击两次「游玩」即可开启新会话');
     });
     document.getElementById('btnThemeQuick').addEventListener('click', toggleMode);
-    /* 邀请制入口：不锁任何浏览功能，只在「要开口」的地方拦住 */
-    const inv = document.getElementById('btnInvite');
-    if (inv) inv.addEventListener('click', function () { RP.invite.open(); });
     const ft = document.getElementById('btnFocusTop');
     if (ft) ft.addEventListener('click', function () {
       if (RP.store.get().ui.view !== 'chat') { setView('chat'); }
@@ -570,6 +567,43 @@ RP.app = (function () {
     window.addEventListener('hashchange', function () { if (focusOn()) setFocus(false); });
   }
 
+  /* ------------------------------ 成年人确认 ------------------------------
+     只做一次、只存在本机（localStorage），不采集任何个人信息、不联网。
+     定位是成年人向虚构剧情，把「未成年人请离开」明确写出来。
+     后台「全局设置」里 site.ageGate=false 可以关掉。 */
+  const AGE_KEY = 'rp_age_confirmed';
+  function ageGate() {
+    const site = (RP.settings.get() || {}).site || {};
+    if (site.ageGate === false) return;
+    /* tools/ 下的验收页会被 iframe 嵌入，弹窗会挡住它们 --> 这种场景跳过 */
+    try { if (window.parent !== window && /^\/tools\//.test(window.parent.location.pathname)) return; } catch (e) { }
+    let ok = '';
+    try { ok = localStorage.getItem(AGE_KEY) || ''; } catch (e) { return; }   // 存不了就别拦人
+    if (ok === '1') return;
+    const mask = document.createElement('div');
+    mask.className = 'age-mask';
+    mask.id = 'ageMask';
+    mask.innerHTML = '<div class="age-card">' +
+      '<h2>未成年人不适宜</h2>' +
+      '<p>本站是<b>成年人向</b>的虚构剧情角色扮演站点：内容涉及猜忌、胁迫、死亡与情欲张力（但不含露骨性描写）。</p>' +
+      '<p>如果你未满 18 周岁，请立即离开。</p>' +
+      '<p class="age-fine">继续即表示你已满 18 周岁，并知悉全部内容为虚构。本站不收集你的姓名、身份证号或手机号，这条确认只记在你自己这台设备的浏览器里。</p>' +
+      '<div class="age-row"><button class="btn primary" id="ageOk">我已满 18 周岁，进入</button>' +
+      '<button class="btn" id="ageNo">未满 18 周岁</button></div>' +
+      '</div>';
+    document.body.appendChild(mask);
+    document.documentElement.style.overflow = 'hidden';
+    const close = function () { mask.remove(); document.documentElement.style.overflow = ''; };
+    mask.querySelector('#ageOk').addEventListener('click', function () {
+      try { localStorage.setItem(AGE_KEY, '1'); } catch (e) { }
+      close();
+    });
+    mask.querySelector('#ageNo').addEventListener('click', function () {
+      mask.querySelector('.age-card').innerHTML = '<h2>请离开</h2><p>本站只面向成年人。请关闭这个页面；如果你需要帮助，请联系你信任的成年人。</p>' +
+        '<p class="age-fine">（直接关闭标签页即可。）</p>';
+    });
+  }
+
   function init() {
     applyAppearance();
     bind();
@@ -609,20 +643,15 @@ RP.app = (function () {
     await RP.settings.load();
     RP.store.syncQuota();
     await RP.api.loadServerModel();
-    /* 邀请制放在渲染之前问：锁着的话，对话区第一次画出来就是"要邀请码"，
-       不会先闪一下输入框再被替换掉。没有后端时这一步自动变成"不启用"。 */
-    await RP.invite.load();
     await RP.data.load();
     RP.store.reseedAssistant();
     applySiteTexts();
     paintQuota();
+    ageGate();
     init();
     if (backend) {
       const si = RP.api.serverInfo();
-      const gate = RP.invite.info();
-      if (gate.enabled && !gate.unlocked) {
-        toast('本站为<b>邀请制</b>：内容随便看，对话需要邀请码（点右上角「邀请码」输入）', 'warn');
-      } else if (si.serverModel) {
+      if (si.serverModel) {
         toast('已连接后端 · 模型由本站提供（<b>' + RP.util.esc(si.model) + '</b>，每日 ' + si.dailyQuota + ' 次）', 'ok');
       } else {
         toast('已连接后端 · 内容由服务端管理', 'ok');

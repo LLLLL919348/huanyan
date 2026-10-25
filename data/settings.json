@@ -12,7 +12,8 @@
       "不含充值 / 打赏等任何付费入口"
     ],
     "compactPrompt": "auto",
-    "icp": "湘ICP备2026048625号-1"
+    "icp": "湘ICP备2026048625号-1",
+    "ageGate": true
   },
   "assistant": {
     "name": "会话助手",

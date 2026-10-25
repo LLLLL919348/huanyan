@@ -186,15 +186,11 @@ function modelReady() {
 function publicModelInfo() {
   const m = readModelConfig();
   const ready = modelReady();
-  const inv = require('./invite').load();
   return {
     serverModel: ready,
     model: ready ? m.model : '',
     local: ready ? isLocalBase(m.base) : false,
-    dailyQuota: m.dailyQuota,
-    /* 邀请制开关：前端据此决定「能不能开口」和「要不要显示邀请码入口」。
-       真正的准入判定在 server.js 的 /api/chat，这里只是个提示。 */
-    inviteEnabled: inv.enabled === true
+    dailyQuota: m.dailyQuota
   };
 }
 

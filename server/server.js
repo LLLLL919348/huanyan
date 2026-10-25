@@ -20,7 +20,6 @@ const crypto = require('crypto');
 const sec = require('./security');
 const promptBuilder = require('./prompt');
 const stats = require('./stats');
-const invite = require('./invite');
 
 /* ------------------------------ 路径与常量 ------------------------------ */
 const ROOT = path.resolve(__dirname, '..');            // 项目根目录
@@ -186,6 +185,7 @@ function defaultSettings() {
       name: '幻言',
       tagline: 'AI 角色扮演 · 陪聊',
       icp: '湘ICP备2026048625号-1',
+      ageGate: true,
       dailyQuota: 0,          // 0 = 不限（站点不提供模型后没有额度这回事）
       footerNotes: [
         '成年人向虚构剧情扮演 · 内容均为虚构，请勿模仿',
@@ -260,7 +260,7 @@ function logLine(method, pathname, result) {
 }
 
 /* 只有这些前缀可以对外提供静态文件：站点资源、封面图、后台 UI 外壳。
-   /data（含 model.json 密钥、invite.json 邀请码）、/server（源码）、根目录杂项一律拒绝。
+   /data（含 model.json 密钥、投稿队列）、/server（源码）、根目录杂项一律拒绝。
    /tools/ 下的验收页只对本机开放 —— 传真实的 req 而不是伪造一个回环 socket：
    部署时虽然不传 tools/，但"本机才放行"这条规则必须按真实来源判断，不能靠"反正没传"，
    否则哪天顺手把 tools 放上去，验收页连同内联数据就公开了。 */
@@ -295,40 +295,6 @@ function ok(res, obj, extraHeaders) {
   }, extraHeaders || {});
   res.writeHead(200, headers);
   res.end(buf);
-}
-
-/* ------------------------------ Cookie 与邀请码准入 ------------------------------ */
-function cookieOf(req, name) {
-  const parts = String(req.headers.cookie || '').split(';');
-  for (let i = 0; i < parts.length; i++) {
-    const p = parts[i].trim();
-    const eq = p.indexOf('=');
-    if (eq > 0 && p.slice(0, eq) === name) {
-      try { return decodeURIComponent(p.slice(eq + 1)); } catch (e) { return p.slice(eq + 1); }
-    }
-  }
-  return '';
-}
-/* 凭证来源：HttpOnly Cookie（主）+ x-invite-grant 头（同一浏览器 cookie 被禁时的兜底） */
-function inviteToken(req) {
-  return cookieOf(req, invite.COOKIE) || String(req.headers['x-invite-grant'] || '');
-}
-function inviteCookie(value, days) {
-  return invite.COOKIE + '=' + encodeURIComponent(value) + '; Path=/; Max-Age=' + (Math.max(1, Number(days) || 90) * 86400) + '; SameSite=Lax; HttpOnly';
-}
-/* 邀请制是否已经放开给这一次请求 */
-function inviteState(req) {
-  const cfg = invite.load();
-  const r = invite.check(inviteToken(req));
-  return {
-    enabled: cfg.enabled === true,
-    unlocked: r.ok,
-    via: r.via,
-    code: r.code || '',
-    days: cfg.sessionDays,
-    reason: r.reason || '',
-    exp: (invite.verifyGrant(inviteToken(req)) || {}).exp || 0
-  };
 }
 
 function readBody(req) {
@@ -574,112 +540,7 @@ async function handleApi(req, res, pathname) {
 
   /* --- 健康检查 --- */
   if (pathname === '/api/health' && method === 'GET') {
-    return ok(res, { ok: true, version: VERSION, resources: resources.length, invite: invite.load().enabled === true });
-  }
-
-  /* --- 邀请制：本站现在是不是邀请准入、这次请求有没有通过 --- */
-  if (pathname === '/api/session' && method === 'GET') {
-    const s = inviteState(req);
-    return ok(res, {
-      ok: true,
-      invite: {
-        enabled: s.enabled,
-        unlocked: s.unlocked,
-        via: s.via,
-        days: s.days,
-        exp: s.exp,
-        reason: s.reason
-      }
-    });
-  }
-  /* --- 用邀请码换一张签名凭证（服务端校验，凭证写进 HttpOnly Cookie） --- */
-  if (pathname === '/api/invite' && method === 'POST') {
-    let b;
-    try { b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
-    catch (e) { return fail(res, 400, '请求体不是合法 JSON', method, pathname); }
-    const code = String(b.code || '').trim();
-    if (!code) return fail(res, 400, '请输入邀请码', method, pathname);
-    if (code.length > 64) return fail(res, 400, '邀请码格式不对', method, pathname);
-    const r = invite.redeem(code);
-    if (!r.ok) {
-      /* 兑换失败按 IP 限流，避免有人拿字典来试码（成功不计数） */
-      const rl2 = sec.rateLimit('invite:' + (sec.clientIp(req) || 'unknown'), 8, 10 * 60 * 1000);
-      if (!rl2.ok) {
-        res.setHeader('Retry-After', String(rl2.retryAfter));
-        return fail(res, 429, '尝试次数过多，请 ' + rl2.retryAfter + ' 秒后再试', method, pathname);
-      }
-      return fail(res, 403, r.reason, method, pathname);
-    }
-    res.setHeader('Set-Cookie', inviteCookie(r.token, r.days));
-    ok(res, { ok: true, token: r.token, exp: r.exp, days: r.days, code: r.code });
-    return logLine(method, pathname, '邀请码通过（' + r.code.slice(0, 4) + '-…，凭证 ' + r.days + ' 天）');
-  }
-  /* --- 邀请码管理（后台，走管理面两道门） --- */
-  if (pathname === '/api/invite-admin' && method === 'GET') {
-    return ok(res, { ok: true, invite: invite.publicList() });
-  }
-  if (pathname === '/api/invite-admin' && method === 'POST') {
-    let b;
-    try { b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
-    catch (e) { return fail(res, 400, '请求体不是合法 JSON', method, pathname); }
-    const cfg = invite.load(true);
-    const action = String(b.action || 'create');
-    if (action === 'toggle') {
-      cfg.enabled = b.enabled === true;
-      invite.save(cfg);
-      logLine(method, pathname, '邀请制 ' + (cfg.enabled ? '已开启' : '已关闭'));
-      return ok(res, { ok: true, invite: invite.publicList() });
-    }
-    if (action === 'update') {
-      const item = cfg.codes.filter(function (c) { return c.id === String(b.id || ''); })[0];
-      /* 单独的「凭证有效期」不改任何码，只改全局设置 —— 不需要 id */
-      const onlySession = (b.id === undefined || b.id === null || b.id === '') && b.sessionDays !== undefined;
-      if (onlySession) {
-        cfg.sessionDays = Math.max(1, Math.min(3650, Number(b.sessionDays) || 90));
-        invite.save(cfg);
-        logLine(method, pathname, '访客凭证有效期改为 ' + cfg.sessionDays + ' 天');
-        return ok(res, { ok: true, invite: invite.publicList() });
-      }
-      if (!item) return fail(res, 404, '邀请码不存在', method, pathname);
-      if (b.disabled !== undefined) item.disabled = b.disabled === true;
-      if (b.note !== undefined) item.note = String(b.note || '').slice(0, 80);
-      if (b.expiresAt !== undefined) item.expiresAt = Number(b.expiresAt) > 0 ? Number(b.expiresAt) : 0;
-      if (b.days !== undefined) {
-        /* 传的是「还有几天」：换算成绝对过期时间；0 或负数 = 永久 */
-        const d = Number(b.days);
-        item.expiresAt = d > 0 ? Date.now() + Math.min(3650, d) * 86400000 : 0;
-      }
-      invite.save(cfg);
-      logLine(method, pathname, '更新邀请码 ' + item.code.slice(0, 4) + '-…');
-      return ok(res, { ok: true, invite: invite.publicList() });
-    }
-    if (action === 'delete') {
-      const before = cfg.codes.length;
-      cfg.codes = cfg.codes.filter(function (c) { return c.id !== String(b.id || ''); });
-      if (cfg.codes.length === before) return fail(res, 404, '邀请码不存在', method, pathname);
-      invite.save(cfg);
-      logLine(method, pathname, '删除邀请码（已发出的凭证随之失效）');
-      return ok(res, { ok: true, invite: invite.publicList() });
-    }
-    /* 默认动作：生成一批新码 */
-    const n = Math.max(1, Math.min(50, Number(b.count) || 1));
-    const d = b.days === undefined ? 30 : Number(b.days);
-    const expiresAt = d > 0 ? Date.now() + Math.min(3650, d) * 86400000 : 0;
-    const made = [];
-    for (let i = 0; i < n; i++) {
-      let code = invite.genCode();
-      while (cfg.codes.some(function (c) { return c.code === code; })) code = invite.genCode();
-      const item = {
-        id: 'inv-' + Date.now().toString(36) + '-' + crypto.randomBytes(3).toString('hex'),
-        code: code, note: String(b.note || '').slice(0, 80),
-        createdAt: Date.now(), expiresAt: expiresAt, disabled: false, used: 0, lastUsedAt: 0
-      };
-      cfg.codes.unshift(item);
-      made.push(code);
-    }
-    invite.save(cfg);
-    logLine(method, pathname, '生成 ' + n + ' 个邀请码（' + (expiresAt ? '有效期至 ' + new Date(expiresAt).toLocaleString('zh-CN') : '永久有效') + '）');
-    return ok(res, { ok: true, made: made, invite: invite.publicList() });
+    return ok(res, { ok: true, version: VERSION, resources: resources.length });
   }
 
   /* --- 资源集合 --- */
@@ -887,16 +748,18 @@ async function handleApi(req, res, pathname) {
   }
 
   /* ==========================================================================
-     投稿（有邀请码的访客可以提交自己的本子，进后台审核池）
-       POST /api/submit                访客提交（需要邀请码凭证）
+     投稿（已关闭访客投稿：邀请制删除后，只有带管理令牌的调用方能用；前端入口已移除）
+       POST /api/submit                仅站长（需要 x-admin-token）
        GET  /api/submissions           后台读队列
        POST /api/submissions/:id/approve  后台通过 → 变成资源（默认 upcoming）
        POST /api/submissions/:id/reject   后台驳回（可带理由）
      数据在 data/submissions.json，与 resources.json 分开，审核前不进线上资源库。
      ========================================================================== */
   if (pathname === '/api/submit' && method === 'POST') {
-    const iv2 = inviteState(req);
-    if (!iv2.unlocked) return fail(res, 403, '新增资源需要邀请码：请先在右上角「邀请码」里输入', method, pathname);
+    /* 邀请制已删除：投稿入口只给站长（后台或带令牌的脚本），访客不再能直接投稿 */
+    if (!sec.adminAllowed(req, process.env.ADMIN_TOKEN || '', req.url || '')) {
+      return fail(res, 403, '新增资源仅站长可用', method, pathname);
+    }
     let b;
     try { b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
     catch (e) { return fail(res, 400, '请求体不是合法 JSON', method, pathname); }
@@ -915,7 +778,7 @@ async function handleApi(req, res, pathname) {
       id: 'sub-' + Date.now().toString(36) + '-' + crypto.randomBytes(3).toString('hex'),
       status: 'pending',
       createdAt: Date.now(),
-      code: String(iv2.code || '').slice(0, 9) + '…',
+      code: 'admin',
       draft: {
         name: name,
         subtitle: pick('subtitle', 60),
@@ -1076,8 +939,7 @@ async function handleApi(req, res, pathname) {
     catch (e) { return fail(res, 400, '请求体不是合法 JSON', method, pathname); }
     const useOwn = !!(body.userModel && body.userModel.base && body.userModel.model);
     /* ★ 2026-10-22：站点不再自营模型，对话一律用访客自己的 key。
-       所以这里不再用邀请码拦「对话」（拦不住：直连根本走不到这台服务器）；
-       邀请码的用途改成「新增资源」的资格。 */
+       所以这里不再拦「对话」—— 直连根本走不到这台服务器；站点自己也没有模型可调。 */
     if (!useOwn) {
       return fail(res, 503,
         '本站不提供模型：请到「我的 → 模型与安全」填你自己的 API Key（浏览器直连，key 不会上传到本站）',
@@ -1231,7 +1093,6 @@ async function handleApi(req, res, pathname) {
           return res.end();
         }
         try { stats.turn(); } catch (e) { }
-        try { if (iv.via === 'grant') invite.noteUse(iv.code); } catch (e) { }
         send({ done: true, text: full, quota: sec.quotaOf(vid) });
         return res.end();
       } catch (e) {
@@ -1263,7 +1124,6 @@ async function handleApi(req, res, pathname) {
       const text = data && data.choices && data.choices[0] && data.choices[0].message ? String(data.choices[0].message.content || '') : '';
       if (!text.trim()) { if (spend) sec.refundQuota(vid); return fail(res, 502, '模型返回为空', method, pathname); }
       try { stats.turn(); } catch (e) { }
-      try { if (iv.via === 'grant') invite.noteUse(iv.code); } catch (e) { }
       return ok(res, { ok: true, text: text, quota: sec.quotaOf(vid) });
     } catch (e) {
       clearTimeout(timer);
@@ -1376,14 +1236,14 @@ const server = http.createServer(function (req, res) {
          未配令牌时第①道仍然拦着 —— 公网上没有令牌就进不来。 */
   const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
   const isWriteApi = pathname.indexOf('/api/') === 0 && ['POST', 'PUT', 'DELETE', 'PATCH'].indexOf(req.method) !== -1;
-  /* ★ /api/invite-admin 是敏感的：它会把**明文邀请码**列出来（那等于门钥匙）。
+  /* ★ /api/submissions 是敏感的：那里是待审投稿全文。
      所以它和 stats / export 一样，算「只在管理面存在」的 GET。 */
   const isSensitiveGet = (pathname === '/api/export' || pathname === '/api/import' ||
-    pathname === '/api/stats' || pathname === '/api/invite-admin' || pathname === '/api/submissions');
-  /* 前台正常会用的 POST：对话、开局打点、兑换邀请码 —— 这三个不吃管理令牌
-     （否则访客的统计、对话与准入全废）。/api/invite 只有「输入邀请码」这一个动作，
+    pathname === '/api/stats' || pathname === '/api/submissions');
+  /* 前台正常会用的 POST：对话与开局打点 —— 这两个不吃管理令牌
+     （否则访客的统计与对话全废）。
      真正的校验在 handleApi 里，且失败按 IP 限流。 */
-  const PUBLIC_POSTS = ['/api/chat', '/api/play', '/api/invite', '/api/submit'];
+  const PUBLIC_POSTS = ['/api/chat', '/api/play'];
   const isAdminPage = pathname === '/admin' || pathname === '/admin/' || pathname === '/admin/index.html';
   const isAdminAsset = pathname === '/admin/admin.css' || pathname === '/admin/admin.js';
   const settingsNow = settings || {};             // 启动时已载入；两道门共用
@@ -1487,17 +1347,6 @@ server.listen(PORT, HOST, function () {
     console.log('项目根目录：' + ROOT);
     console.log('服务端模型：' + (sec.modelReady() ? (sec.readModelConfig().model + ' · 每日 ' + sec.readModelConfig().dailyQuota + ' 次/人') : '未配置（前端将回退到本地演绎引擎或访客自带密钥）'));
     console.log('管理令牌：' + (process.env.ADMIN_TOKEN ? '已设置' : '未设置（仅本机可写）'));
-    (function () {
-      const cfg = invite.load(true);
-      if (cfg.enabled) {
-        const now = Date.now();
-        const live = cfg.codes.filter(function (c) { return !c.disabled && (!c.expiresAt || c.expiresAt > now); }).length;
-        console.log('邀请制：★ 已开启 · 有效邀请码 ' + live + ' / 共 ' + cfg.codes.length + ' 个 · 凭证有效期 ' + cfg.sessionDays + ' 天');
-        if (!live) console.log('        ⚠ 现在一个有效邀请码都没有 —— 谁也进不来，请到后台「邀请码」页生成');
-      } else {
-        console.log('邀请制：未开启（所有人可对话；开启后需邀请码，见后台「邀请码」页）');
-      }
-    })();
     console.log('资源 ' + resources.length + ' 条 · 数据文件 ' + RES_FILE);
   });
 }

@@ -84,8 +84,12 @@ document.getElementById('f').addEventListener('load', function () {
       P('');
 
       /* 换回有模型：输入区与发送按钮也得在屏幕内 */
-      w.RP.api.mode = function () { return 'server'; };
-      w.RP.api.serverInfo = function () { return { serverModel: true, model: 'rp-qwen3b:latest', local: true, dailyQuota: 20, quota: { left: 20, limit: 20 } }; };
+      /* 现在是「访客自带 key」的形态：给一个假的自带模型，输入区才是正常的输入框 */
+      const stModel = w.RP.store.get();
+      stModel.api = { enabled: true, base: 'http://127.0.0.1:9/v1', key: 'k', model: 'm', temp: 0.85, direct: true };
+      w.RP.store.save();
+      w.RP.api.mode = function () { return 'own'; };
+      w.RP.api.serverInfo = function () { return { serverModel: false, model: '', local: false, dailyQuota: 0, quota: null }; };
       if (w.RP.chat.renderComposer) w.RP.chat.renderComposer();
       await wait(400);
       measure('对话页（正常输入区）');

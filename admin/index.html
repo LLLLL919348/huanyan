@@ -26,6 +26,7 @@
     <button class="tab" data-tab="stats">访问统计</button>
     <button class="tab" data-tab="review">审稿</button>
     <button class="tab" data-tab="report">举报</button>
+    <button class="tab" data-tab="users">用户</button>
   </nav>
 
   <div class="topbar-right">
@@ -329,6 +330,27 @@
         <div id="reportList"><p class="note">读取中…</p></div>
         <p class="note">访客在页脚「举报与投诉」提交 → 落在这里（<code>data/reports.json</code>）。
           承诺 48 小时内处理，涉及未成年人的优先。处理记录会保留，供监管核查。</p>
+      </fieldset>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================ 用户 ============================ -->
+<section class="page" id="page-users">
+  <div class="actionbar actionbar-slim">
+    <div class="actionbar-info"><strong>用户账号</strong><span class="hint" id="usersHint">读取中…</span></div>
+    <div class="actionbar-btns">
+      <button class="btn btn-sm btn-primary" id="btnUsersReload">刷新</button>
+    </div>
+  </div>
+  <div class="form-scroll">
+    <div class="pad">
+      <fieldset class="card">
+        <legend>邮箱账号</legend>
+        <div id="usersList"><p class="note">读取中…</p></div>
+        <p class="note">账号来自邮箱验证码登录（<code>data/accounts.json</code>）。封禁后该账号的会话立即失效、不能再登录。
+          这里只显示脱敏邮箱；本站不收集姓名、证件、手机号。</p>
       </fieldset>
     </div>
   </div>

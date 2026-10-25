@@ -1711,6 +1711,55 @@
   })();
 
 
+
+  /* ------------------------------ 用户 ------------------------------ */
+  const usersTab = (function () {
+    let items = [];
+    function fmt(ts) {
+      if (!ts) return '—';
+      const d = new Date(Number(ts)), p = function (n) { return n < 10 ? '0' + n : '' + n; };
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    function esc2(x) { return esc(String(x == null ? '' : x)); }
+    function render() {
+      const box = $('#usersList');
+      if (!box) return;
+      box.innerHTML = items.length ? items.map(function (u) {
+        return '<div class="review-card" data-id="' + esc2(u.id) + '">' +
+          '<div class="review-head"><b>' + esc2(u.email) + '</b>' +
+            (u.status === 'active' ? '' : '<span class="btn btn-sm" style="pointer-events:none;border-color:#c5353f;color:#c5353f">已封禁</span>') +
+            '<span class="hint">注册 ' + fmt(u.createdAt) + ' · 最近登录 ' + fmt(u.lastLoginAt) + '</span></div>' +
+          '<div class="review-foot">' +
+            (u.status === 'active'
+              ? '<button class="btn btn-sm" data-u="ban">封禁</button>'
+              : '<button class="btn btn-sm btn-primary" data-u="unban">恢复</button>') +
+          '</div></div>';
+      }).join('') : '<p class="note">还没有账号。</p>';
+      const h2 = $('#usersHint');
+      if (h2) h2.textContent = '共 ' + items.length + ' 个 · 封禁 ' + items.filter(function (u) { return u.status !== 'active'; }).length + ' 个';
+    }
+    function load() {
+      return API.get('/api/accounts').then(function (d) { items = d.accounts || []; render(); })
+        .catch(function (e) { $('#usersList').innerHTML = '<p class="note">读取失败：' + esc2(e.message) + '</p>'; });
+    }
+    function init() {
+      const list = $('#usersList');
+      if (!list) return;
+      list.addEventListener('click', function (e) {
+        const b = e.target.closest('[data-u]');
+        if (!b) return;
+        const id = b.closest('.review-card').dataset.id;
+        const act = b.dataset.u;
+        if (act === 'ban' && !confirm('封禁这个账号？对方会立刻掉线，且无法再登录。')) return;
+        API.post('/api/accounts/' + encodeURIComponent(id) + '/' + act, {})
+          .then(function () { toast(act === 'ban' ? '已封禁' : '已恢复', 'ok'); load(); })
+          .catch(function (er) { toast('失败：' + er.message, 'err'); });
+      });
+      const r = $('#btnUsersReload'); if (r) r.addEventListener('click', load);
+    }
+    return { init: init, load: load };
+  })();
+
   /* ------------------------------ 举报 ------------------------------ */
   const reportTab = (function () {
     let items = [];
@@ -1915,6 +1964,7 @@
     if (name === 'stats') statsTab.info();
     if (name === 'review') reviewTab.load();
     if (name === 'report') reportTab.load();
+    if (name === 'users') usersTab.load();
   }
 
   /* ------------------------------ 访问统计 ------------------------------ */
@@ -1983,6 +2033,7 @@
     statsTab.init();
     reviewTab.init();
     reportTab.init();
+    usersTab.init();
     $('#tabs').addEventListener('click', function (e) {
       const t = e.target.closest('.tab');
       if (t) switchTab(t.dataset.tab);
@@ -2000,7 +2051,7 @@
       /* 支持 /admin?tab=settings 这样的直链（也方便自动化截图核对） */
       const qs = new URLSearchParams(location.search);
       const want = qs.get('tab');
-      if (want && ['resources', 'settings', 'backup', 'stats', 'review', 'report'].indexOf(want) !== -1) switchTab(want);
+      if (want && ['resources', 'settings', 'backup', 'stats', 'review', 'report', 'users'].indexOf(want) !== -1) switchTab(want);
       /* ?focus=<区块 id / 字段名>：载入后把该区块滚进视野（方便直链与自动化截图） */
       const focus = qs.get('focus');
       if (focus) {

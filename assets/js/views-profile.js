@@ -63,6 +63,9 @@ RP.profile = (function () {
         '<div style="width:100%;display:flex;gap:10px;flex-wrap:wrap;margin-top:4px">' +
           '<button class="btn sm" id="pfRename">修改称呼</button>' +
           '<button class="btn sm" id="pfAssistant">打开会话助手</button>' +
+          (RP.auth && RP.auth.info().me
+            ? '<button class="btn sm" id="pfLogout">退出登录（' + RP.util.esc(RP.auth.info().me.email) + '）</button>'
+            : '<button class="btn sm" id="pfLogin">登录</button>') +
         '</div>' +
       '</div>' +
 

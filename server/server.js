@@ -18,6 +18,8 @@ const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
 const sec = require('./security');
+const mailer = require('./mailer');
+const auth = require('./auth');
 const promptBuilder = require('./prompt');
 const stats = require('./stats');
 
@@ -196,6 +198,19 @@ function defaultSettings() {
         '本站只提供 AI 陪聊与角色扮演，AI 不具备任何实际操作权限',
         '不含充值 / 打赏等任何付费入口'
       ]
+    },
+    /* 登录与发信：requireLogin 打开后，必须邮箱验证码登录才能对话 */
+    auth: {
+      requireLogin: false
+    },
+    mail: {
+      host: '',
+      port: 465,
+      secure: true,
+      user: '',
+      pass: '',
+      from: '',
+      fromName: '幻言'
     },
     assistant: {
       name: '会话助手',
@@ -812,6 +827,88 @@ async function handleApi(req, res, pathname) {
   }
 
 
+  /* --- 邮箱验证码登录 --- */
+  if (pathname === '/api/auth/send-code' && method === 'POST') {
+    let b;
+    try { b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch (e) { return fail(res, 400, '请求体不是合法 JSON', method, pathname); }
+    const email = auth.normalize(b.email);
+    if (!auth.validEmail(email)) return fail(res, 400, '邮箱格式不对', method, pathname);
+    if (!mailer.ready((settings && settings.mail) || {})) {
+      return fail(res, 503, '邮件服务还没配置，暂时无法发送验证码（请联系站长）', method, pathname);
+    }
+    const ip = sec.clientIp(req) || 'unknown';
+    const st = auth.rateState(email, ip);
+    if (st.wait) return fail(res, 429, '刚发过，' + st.wait + ' 秒后再试', method, pathname);
+    if (st.blocked === 'ip') return fail(res, 429, '这个地址请求太频繁，请一小时后再试', method, pathname);
+    if (st.blocked === 'global') return fail(res, 429, '今天验证码发得太多了，请稍后再试', method, pathname);
+    const code = auth.issueCode(email, ip);
+    const text = '幻言 · 登录验证码\n\n' + code + '\n\n10 分钟内有效。不是本人在操作请忽略这封邮件。\n如果频繁收到，请回复本站举报邮箱。';
+    try {
+      await mailer.send(settings.mail, email, '幻言登录验证码 ' + code, text);
+    } catch (e) {
+      logLine(method, pathname, '发信失败：' + e.message);
+      return fail(res, 502, '验证码发送失败（' + e.message + '），请稍后再试或联系站长', method, pathname);
+    }
+    logLine(method, pathname, '已发送验证码 → ' + auth.maskEmail(email));
+    return ok(res, { ok: true, masked: auth.maskEmail(email), note: '验证码已发送，10 分钟内有效' });
+  }
+
+  if (pathname === '/api/auth/verify' && method === 'POST') {
+    let b;
+    try { b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch (e) { return fail(res, 400, '请求体不是合法 JSON', method, pathname); }
+    const email = auth.normalize(b.email);
+    if (!auth.validEmail(email)) return fail(res, 400, '邮箱格式不对', method, pathname);
+    const r = auth.checkCode(email, b.code);
+    if (!r.ok) return fail(res, 400, r.reason, method, pathname);
+    const made = auth.ensureAccount(email);
+    const doc = made.doc;
+    const acc = doc.items.filter(function (x) { return x.id === made.account.id; })[0];
+    if (acc.status !== 'active') return fail(res, 403, '这个账号已被停用', method, pathname);
+    acc.lastLoginAt = Date.now();
+    auth.saveAccounts(doc);
+    const token = auth.makeSession(acc.id);
+    res.setHeader('Set-Cookie', auth.cookieHeader(token));
+    logLine(method, pathname, '登录成功 ' + acc.id + '（' + auth.maskEmail(email) + '）');
+    return ok(res, { ok: true, account: auth.publicAccount(acc), requireLogin: !!(settings.auth && settings.auth.requireLogin) });
+  }
+
+  if (pathname === '/api/auth/me' && method === 'GET') {
+    const a = auth.current(req);
+    return ok(res, {
+      ok: true,
+      account: auth.publicAccount(a),
+      requireLogin: !!(settings.auth && settings.auth.requireLogin),
+      mailReady: mailer.ready((settings && settings.mail) || {})
+    });
+  }
+
+  if (pathname === '/api/auth/logout' && method === 'POST') {
+    res.setHeader('Set-Cookie', auth.clearCookie());
+    return ok(res, { ok: true });
+  }
+
+  /* --- 后台：账号列表 / 封禁 --- */
+  if (pathname === '/api/accounts' && method === 'GET') {
+    const doc = auth.loadAccounts();
+    const list = doc.items.map(function (a) {
+      return { id: a.id, email: auth.maskEmail(a.email), createdAt: a.createdAt, lastLoginAt: a.lastLoginAt, status: a.status };
+    }).sort(function (x, y) { return (y.lastLoginAt || y.createdAt) - (x.lastLoginAt || x.createdAt); });
+    return ok(res, { ok: true, accounts: list, total: list.length });
+  }
+
+  let accM = /^\/api\/accounts\/([^/]+)\/(ban|unban)$/.exec(pathname);
+  if (accM && method === 'POST') {
+    const doc = auth.loadAccounts();
+    const idx = doc.items.findIndex(function (x) { return x.id === decodeURIComponent(accM[1]); });
+    if (idx === -1) return fail(res, 404, '账号不存在', method, pathname);
+    doc.items[idx].status = accM[2] === 'ban' ? 'banned' : 'active';
+    auth.saveAccounts(doc);
+    logLine(method, pathname, (accM[2] === 'ban' ? '停用' : '恢复') + '账号 ' + doc.items[idx].id);
+    return ok(res, { ok: true, status: doc.items[idx].status });
+  }
+
   /* --- 投诉举报（公开）：写进 data/reports.json，后台「举报」页处理 --- */
   if (pathname === '/api/report' && method === 'POST') {
     const ip = sec.clientIp(req) || '';
@@ -1085,6 +1182,10 @@ async function handleApi(req, res, pathname) {
 
   /* 模型代理：只在「访客自带 key 但浏览器被 CORS 挡住」时用；站点本身不再有模型 */
   if (pathname === '/api/chat' && method === 'POST') {
+    /* 未登录不能对话（settings.auth.requireLogin 打开时生效） */
+    if (settings.auth && settings.auth.requireLogin) {
+      if (!auth.current(req)) return fail(res, 401, '请先登录（邮箱验证码）再开始对话', method, pathname);
+    }
     const vid = sec.visitorId(req, res);
     const q0 = sec.quotaOf(vid);
     let body;
@@ -1413,11 +1514,11 @@ const server = http.createServer(function (req, res) {
   /* ★ /api/submissions 是敏感的：那里是待审投稿全文。
      所以它和 stats / export 一样，算「只在管理面存在」的 GET。 */
   const isSensitiveGet = (pathname === '/api/export' || pathname === '/api/import' ||
-    pathname === '/api/stats' || pathname === '/api/submissions' || pathname === '/api/reports');
+    pathname === '/api/stats' || pathname === '/api/submissions' || pathname === '/api/reports' || pathname === '/api/accounts');
   /* 前台正常会用的 POST：对话与开局打点 —— 这两个不吃管理令牌
      （否则访客的统计与对话全废）。
      真正的校验在 handleApi 里，且失败按 IP 限流。 */
-  const PUBLIC_POSTS = ['/api/chat', '/api/play', '/api/report'];
+  const PUBLIC_POSTS = ['/api/chat', '/api/play', '/api/report', '/api/auth/send-code', '/api/auth/verify', '/api/auth/logout'];
   const isAdminPage = pathname === '/admin' || pathname === '/admin/' || pathname === '/admin/index.html';
   const isAdminAsset = pathname === '/admin/admin.css' || pathname === '/admin/admin.js';
   const settingsNow = settings || {};             // 启动时已载入；两道门共用

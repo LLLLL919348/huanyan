@@ -681,6 +681,9 @@ RP.app = (function () {
     applySiteTexts();
     paintQuota();
     ageGate();
+    await RP.auth.load();
+    const ai = RP.auth.info();
+    if (ai.requireLogin && !ai.me) { RP.auth.open({ force: true }); }
     init();
     if (backend) {
       const si = RP.api.serverInfo();

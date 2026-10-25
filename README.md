@@ -447,7 +447,7 @@ powershell -File tools/run-smoke.ps1 check-state-history   # 无头浏览器，�
 
 | 项 | 值 |
 | --- | --- |
-| 前台 | **http://8.138.170.154/** （公网 80，systemd 系统服务 `huanyan.service`，崩溃自动重拉） |
+| 前台 | **https://huanyanai.website/** （公网 80，systemd 系统服务 `huanyan.service`，崩溃自动重拉） |
 | 代码目录 | `/home/admin/huanyan/`（`index.html` + `assets/` + `admin/` + `server/` + `data/`） |
 | 运行参数 | `/home/admin/huanyan/.env`（600，含 `PORT` / `HOST` / `ADMIN_TOKEN`） |
 | 站点模型 | 智谱 GLM-4-Flash（免费档），密钥只在服务端 `data/model.json` |
@@ -506,7 +506,7 @@ powershell -File tools\deploy.ps1            # 加 -DryRun 只看会上传哪些
 
 # 暴露面自查（本地与线上都能跑；线上会核对"后台必须 404"）
 node tools\check-exposure.js                 # 静态检查
-node tools\check-exposure.js http://8.138.170.154
+node tools\check-exposure.js https://huanyanai.website
 ```
 
 `tools/deploy.ps1` 会生成/复用管理令牌并存在 **`%USERPROFILE%\.huanyan-deploy.json`**（仓库外，不入库）。

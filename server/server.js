@@ -1473,8 +1473,17 @@ async function handleApi(req, res, pathname) {
 }
 
 /* ------------------------------ 主服务 ------------------------------ */
-const server = http.createServer(function (req, res) {
+function handler(req, res) {
   const __t0 = Date.now();
+  /* 强制 HTTPS：FORCE_HTTPS=true 时 80 端口除 ACME 校验与健康检查外全部 301（默认关） */
+  if (String(process.env.FORCE_HTTPS) === 'true' && !req.socket.encrypted) {
+    const u0 = String(req.url || '/');
+    const host0 = String(req.headers.host || '').replace(/:\d+$/, '');
+    if (host0 && u0.indexOf('/.well-known/acme-challenge/') !== 0 && u0 !== '/api/health') {
+      res.writeHead(301, { Location: 'https://' + host0 + u0 });
+      return res.end();
+    }
+  }
   const __ip = (req.socket && req.socket.remoteAddress) || '';
   res.on('finish', function () {
     if (!/^\/(api|admin)/.test(req.url || '') && (req.url || '').indexOf('/assets/') === 0) return;   // 静态资源不记，省体积
@@ -1505,6 +1514,20 @@ const server = http.createServer(function (req, res) {
   let pathname = rawPath;
   try { pathname = decodeURIComponent(rawPath); }
   catch (e) { return fail(res, 400, 'URL 编码非法', req.method, rawPath); }
+
+  /* ACME 校验文件（Let's Encrypt webroot；只允许一层 token，防目录穿越） */
+  if (pathname.indexOf('/.well-known/acme-challenge/') === 0) {
+    const tk = pathname.slice('/.well-known/acme-challenge/'.length);
+    if (/^[A-Za-z0-9_-]{8,128}$/.test(tk)) {
+      try {
+        const body = fs.readFileSync(path.join(DATA_DIR, 'acme', '.well-known', 'acme-challenge', tk));
+        res.writeHead(200, { 'Content-Type': 'text/plain', 'Cache-Control': 'no-store' });
+        return res.end(body);
+      } catch (e) { /* 落到 404 */ }
+    }
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    return res.end('not found');
+  }
 
   /* 开发用验收页（tools/*.html）含内联脚本，单独放宽 CSP；站点与后台保持严格策略 */
   res.__cspRelaxed = pathname.indexOf('/tools/') === 0;
@@ -1591,7 +1614,30 @@ const server = http.createServer(function (req, res) {
   /* 3) 其余按文件返回：只放行白名单目录 */
   if (hasTraversal(pathname)) return denyStatic(req, res, pathname);
   if (!isPublicAsset(pathname, req)) return denyStatic(req, res, pathname);
-  serveStatic(req, res, pathname);});
+  serveStatic(req, res, pathname);
+}
+
+const server = http.createServer(handler);
+
+/* 证书存在就再开一个 HTTPS 端口（默认 443）；FORCE_HTTPS=true 时 80 跳 https */
+(function () {
+  const certDir = path.join(DATA_DIR, 'certs');
+  const certFile = process.env.HTTPS_CERT || path.join(certDir, 'fullchain.pem');
+  const keyFile = process.env.HTTPS_KEY || path.join(certDir, 'privkey.pem');
+  if (!fs.existsSync(certFile) || !fs.existsSync(keyFile)) {
+    console.log('[https] 未找到证书（' + certFile + '），只跑 HTTP');
+    return;
+  }
+  try {
+    const https = require('https');
+    const hs = https.createServer({ cert: fs.readFileSync(certFile), key: fs.readFileSync(keyFile) }, handler);
+    const httpsPort = Number(process.env.HTTPS_PORT) || 443;
+    hs.listen(httpsPort, function () { console.log('[https] 已监听 ' + httpsPort); });
+    hs.on('error', function (e) { console.error('[https] 监听失败：' + e.message); });
+  } catch (e) {
+    console.error('[https] 启动失败：' + e.message);
+  }
+})();
 
 server.on('error', function (e) {
   if (e.code === 'EADDRINUSE') {

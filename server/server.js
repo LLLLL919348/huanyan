@@ -376,6 +376,22 @@ function loadReports() {
 }
 function saveReports(doc) { writeJsonAtomic(REPORT_FILE, { v: 1, items: doc.items || [] }); }
 
+/* 发信配置：环境变量优先（服务器的 .env），其次后台设置；
+   这样授权码可以只存在于服务器上，不进 data/settings.json、不推 Git。 */
+function mailConfig() {
+  const s = (settings && settings.mail) || {};
+  const envSecure = process.env.MAIL_SECURE;
+  return {
+    host: process.env.MAIL_HOST || s.host || '',
+    port: Number(process.env.MAIL_PORT || s.port || 465),
+    secure: envSecure !== undefined ? String(envSecure) !== 'false' : (s.secure !== false),
+    user: process.env.MAIL_USER || s.user || '',
+    pass: process.env.MAIL_PASS || s.pass || '',
+    from: process.env.MAIL_FROM || s.from || '',
+    fromName: s.fromName || '幻言'
+  };
+}
+
 function readBody(req) {
   return new Promise(function (resolve, reject) {
     const chunks = [];
@@ -834,7 +850,7 @@ async function handleApi(req, res, pathname) {
     catch (e) { return fail(res, 400, '请求体不是合法 JSON', method, pathname); }
     const email = auth.normalize(b.email);
     if (!auth.validEmail(email)) return fail(res, 400, '邮箱格式不对', method, pathname);
-    if (!mailer.ready((settings && settings.mail) || {})) {
+    if (!mailer.ready(mailConfig())) {
       return fail(res, 503, '邮件服务还没配置，暂时无法发送验证码（请联系站长）', method, pathname);
     }
     const ip = sec.clientIp(req) || 'unknown';
@@ -845,7 +861,7 @@ async function handleApi(req, res, pathname) {
     const code = auth.issueCode(email, ip);
     const text = '幻言 · 登录验证码\n\n' + code + '\n\n10 分钟内有效。不是本人在操作请忽略这封邮件。\n如果频繁收到，请回复本站举报邮箱。';
     try {
-      await mailer.send(settings.mail, email, '幻言登录验证码 ' + code, text);
+      await mailer.send(mailConfig(), email, '幻言登录验证码 ' + code, text);
     } catch (e) {
       logLine(method, pathname, '发信失败：' + e.message);
       return fail(res, 502, '验证码发送失败（' + e.message + '），请稍后再试或联系站长', method, pathname);
@@ -880,7 +896,7 @@ async function handleApi(req, res, pathname) {
       ok: true,
       account: auth.publicAccount(a),
       requireLogin: !!(settings.auth && settings.auth.requireLogin),
-      mailReady: mailer.ready((settings && settings.mail) || {})
+      mailReady: mailer.ready(mailConfig())
     });
   }
 

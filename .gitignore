@@ -37,3 +37,10 @@ node_modules/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# --- Credentials: SMTP auth code lives only in server .env ---
+.env
+.env.*
+
+# --- Account DB: contains user emails (personal info), never commit ---
+data/accounts.json

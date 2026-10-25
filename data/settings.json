@@ -332,5 +332,14 @@
     "persuadeLimit": 2,
     "leaveEnabled": true,
     "defaultPower": "equal"
+  },
+  "mail": {
+    "host": "smtp.qq.com",
+    "port": 465,
+    "secure": true,
+    "user": "2714150246@qq.com",
+    "pass": "",
+    "from": "2714150246@qq.com",
+    "fromName": "幻言"
   }
 }

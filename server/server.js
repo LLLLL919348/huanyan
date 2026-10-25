@@ -186,6 +186,8 @@ function defaultSettings() {
       tagline: 'AI 角色扮演 · 陪聊',
       icp: '湘ICP备2026048625号-1',
       ageGate: true,
+      reportEmail: '',
+      reportPhone: '',
       dailyQuota: 0,          // 0 = 不限（站点不提供模型后没有额度这回事）
       footerNotes: [
         '仅面向年满十八周岁用户 · 内容均为虚构创作',

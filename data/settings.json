@@ -13,7 +13,9 @@
     ],
     "compactPrompt": "auto",
     "icp": "湘ICP备2026048625号-1",
-    "ageGate": true
+    "ageGate": true,
+    "reportEmail": "",
+    "reportPhone": ""
   },
   "assistant": {
     "name": "会话助手",

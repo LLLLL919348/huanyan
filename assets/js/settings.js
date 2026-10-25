@@ -113,7 +113,9 @@ RP.settings = (function () {
       /* 访客每日演绎额度。注意：真正强制它的是服务端 data/model.json 的 dailyQuota，
          这里只是没有后端（静态打开）时的默认值 —— 两边不一致时以服务端为准。 */
       dailyQuota: 0,
-      ageGate: true,          // 成年人确认（不采集任何个人信息，只记在本机）
+      ageGate: true,
+      reportEmail: '',        // 举报邮箱（后台可改，留空则不显示）
+      reportPhone: '',        // 举报电话（可选）          // 成年人确认（不采集任何个人信息，只记在本机）
       /* 精简规则：auto = 本机小模型自动用精简版提示词（原来 3500 字的完整版会把小模型绕晕）；
          on = 强制精简；off = 强制完整 */
       compactPrompt: 'auto',

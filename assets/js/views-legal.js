@@ -35,6 +35,17 @@ RP.legal = (function () {
     const m = open_('reportMask',
       '<div class="legal-head"><h2>举报与投诉</h2><button class="legal-x" title="关闭">×</button></div>' +
       '<p>本站会在 <b>48 小时内</b>处理；涉及未成年人的举报优先处置。举报内容和处理记录会保存，用于监管核查。</p>' +
+      (function () {
+        const st = (RP.settings.get() || {}).site || {};
+        const em = String(st.reportEmail || '').trim();
+        const ph = String(st.reportPhone || '').trim();
+        if (!em && !ph) return '';
+        let s2 = '<p class="age-fine">也可以直接联系：';
+        if (em) s2 += '邮箱 <a href="mailto:' + RP.util.esc(em) + '">' + RP.util.esc(em) + '</a>';
+        if (em && ph) s2 += ' · ';
+        if (ph) s2 += '电话 ' + RP.util.esc(ph);
+        return s2 + '（工作日 48 小时内回复）</p>';
+      })() +
       '<div class="report-form">' +
         '<label>举报类型<select id="repKind">' + KINDS.map(function (k) { return '<option>' + k + '</option>'; }).join('') + '</select></label>' +
         '<label>涉及页面或本子（可选）<input id="repTarget" maxlength="120" placeholder="例如：雨夜诊所 / 对话页第 30 轮"></label>' +
@@ -99,7 +110,7 @@ RP.legal = (function () {
       '<h4>未成年人</h4>' +
       '<p>本站仅面向年满十八周岁的用户，不向未成年人提供内容与服务。如果你未满十八周岁，请停止使用。</p>' +
       '<h4>联系与投诉</h4>' +
-      '<p>点击页脚「举报与投诉」提交，48 小时内处理；涉及未成年人的优先处置。紧急情况请直接报警。</p>' +
+      '<p>点击页脚「举报与投诉」提交，48 小时内处理；涉及未成年人的优先处置。' + (function () { const st = (RP.settings.get() || {}).site || {}; const em = String(st.reportEmail || '').trim(); return em ? ('也可发邮件至 <a href="mailto:' + RP.util.esc(em) + '">' + RP.util.esc(em) + '</a>。') : ''; })() + '紧急情况请直接报警。</p>' +
       '</div>' +
       '<div class="age-row"><button class="btn primary legal-x2">我知道了</button></div>');
     const btn = document.querySelector('#privacyMask .legal-x2');

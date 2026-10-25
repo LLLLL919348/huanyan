@@ -25,6 +25,7 @@
     <button class="tab" data-tab="backup">数据备份</button>
     <button class="tab" data-tab="stats">访问统计</button>
     <button class="tab" data-tab="review">审稿</button>
+    <button class="tab" data-tab="report">举报</button>
   </nav>
 
   <div class="topbar-right">
@@ -304,6 +305,29 @@
         <div id="reviewList"><p class="note">读取中…</p></div>
         <p class="note">访客在资源页点「＋ 新增资源」提交，需要有效邀请码。通过之后会生成一条资源（状态 <b>upcoming</b>），
           再到「资源编辑」里把状态改成 playable、补封面与场景即可上线。数据文件：<code>data/submissions.json</code>。</p>
+      </fieldset>
+    </div>
+  </div>
+</section>
+
+
+<!-- ============================ 举报 ============================ -->
+<section class="page" id="page-report">
+  <div class="actionbar actionbar-slim">
+    <div class="actionbar-info"><strong>举报与投诉</strong><span class="hint" id="reportHint">读取中…</span></div>
+    <div class="actionbar-btns">
+      <button class="btn btn-sm" id="btnReportOpen">只看未处理</button>
+      <button class="btn btn-sm" id="btnReportAll">全部</button>
+      <button class="btn btn-sm btn-primary" id="btnReportReload">刷新</button>
+    </div>
+  </div>
+  <div class="form-scroll">
+    <div class="pad">
+      <fieldset class="card">
+        <legend>举报记录</legend>
+        <div id="reportList"><p class="note">读取中…</p></div>
+        <p class="note">访客在页脚「举报与投诉」提交 → 落在这里（<code>data/reports.json</code>）。
+          承诺 48 小时内处理，涉及未成年人的优先。处理记录会保留，供监管核查。</p>
       </fieldset>
     </div>
   </div>

@@ -44,6 +44,29 @@ RP.app = (function () {
      老版本这里有一个顶栏按钮与打开后台的函数，已删除；地址只写在 README 与部署脚本里。 */
 
   /* 站点文案（站点名、页脚声明等）来自后台设置 */
+  /* 页脚固定出口：举报与投诉 / 隐私与安全（安全评估要求的对外可见渠道） */
+  function appendFootLinks() {
+    const foot = document.querySelector('.global-foot');
+    if (!foot) return;
+    [['lnkPrivacy', '隐私与安全', function () { if (RP.legal) RP.legal.openPrivacy(); }],
+     ['lnkReport', '举报与投诉', function () { if (RP.legal) RP.legal.openReport(); }]].forEach(function (def) {
+      if (foot.querySelector('#' + def[0])) return;
+      const sep = document.createElement('span');
+      sep.className = 'sep';
+      sep.textContent = '\u00b7';
+      foot.appendChild(sep);
+      const wrap = document.createElement('span');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'foot-link';
+      btn.id = def[0];
+      btn.textContent = def[1];
+      btn.addEventListener('click', def[2]);
+      wrap.appendChild(btn);
+      foot.appendChild(wrap);
+    });
+  }
+
   function applySiteTexts() {
     const s = RP.settings.get().site || {};
     const brand = document.querySelector('.brand-text strong');
@@ -57,6 +80,7 @@ RP.app = (function () {
     if (foot && Array.isArray(s.footerNotes) && s.footerNotes.length) {
       foot.innerHTML = s.footerNotes.map(function (t) { return '<span>' + RP.util.esc(t) + '</span>'; }).join('<span class="sep">·</span>');
       /* 备案号：静态页脚里已经写死一份（看源码也能看到），这里只负责按后台设置更新文字，不重复添加 */
+      appendFootLinks();
       if (s.icp) {
         let link = foot.querySelector('a[href*="beian.miit.gov.cn"]');
         if (!link) {
@@ -604,6 +628,14 @@ RP.app = (function () {
         '<p class="age-fine">如需帮助，可告知监护人、老师，或联系当地未成年人保护机构。</p>';
     });
   }
+
+  /* 页脚：举报与投诉 / 隐私与安全（安全评估要求对外可见的渠道） */
+  (function bindLegal() {
+    const rp = document.getElementById('lnkReport');
+    if (rp) rp.addEventListener('click', function () { if (RP.legal) RP.legal.openReport(); });
+    const pv = document.getElementById('lnkPrivacy');
+    if (pv) pv.addEventListener('click', function () { if (RP.legal) RP.legal.openPrivacy(); });
+  })();
 
   function init() {
     applyAppearance();

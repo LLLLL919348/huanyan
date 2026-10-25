@@ -473,3 +473,5 @@ body { display: flex; flex-direction: column; overflow: hidden; }
 .review-prompt{white-space:pre-wrap;font-family:var(--mono);font-size:11.5px;line-height:1.75;
   background:#f7f4ec;border:1px solid rgba(74,62,44,.12);border-radius:8px;padding:10px;max-height:320px;overflow:auto}
 .review-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px dashed rgba(74,62,44,.14)}
+
+.review-card.urgent{border-color:rgba(197,53,63,.45);background:#fff8f8}

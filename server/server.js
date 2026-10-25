@@ -297,6 +297,66 @@ function ok(res, obj, extraHeaders) {
   res.end(buf);
 }
 
+
+/* ------------------------------ 访问日志（留存 180 天） ------------------------------
+   《网络安全法》第 21 条：采取监测、记录网络运行状态、网络安全事件的技术措施，
+   并按照规定留存相关的网络日志不少于六个月。
+   这里落盘成一行一条 JSON，按天切分，保留 LOG_KEEP_DAYS 天；字段只放排查必需项：
+     时间 / 网络源地址 / 源端口 / 目标地址 / 目标端口 / 方法 / 路径 / 状态码 / 耗时 / UA / 访客匿名 id
+   注意：不记录对话正文（本站也不在服务端保存对话内容），不记录任何账号口令。 */
+/* 注意：systemd 只允许写 data/（ProtectHome=read-only + ReadWritePaths=…/data），
+   所以日志放 data/logs，别放项目根目录的 logs/ —— 那样在生产上根本建不出来。 */
+const LOG_DIR = process.env.HLOG_DIR || path.join(DATA_DIR, 'logs');
+const LOG_KEEP_DAYS = Math.max(30, Number(process.env.LOG_KEEP_DAYS) || 180);
+function ensureLogDir() {
+  try { fs.mkdirSync(LOG_DIR, { recursive: true, mode: 0o700 }); } catch (e) { }
+}
+function logFilePath(d) {
+  const dt = d || new Date();
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return path.join(LOG_DIR, 'access-' + y + '-' + m + '-' + day + '.log');
+}
+let __logWarned = false;
+function appendAccess(line) {
+  try {
+    ensureLogDir();
+    fs.appendFile(logFilePath(), JSON.stringify(line) + '\n', function (err) {
+      /* 写失败不影响请求，但要能在 journal 里看到（第一次报一次，避免刷屏） */
+      if (err && !__logWarned) {
+        __logWarned = true;
+        console.error('[access-log] 写入失败（不影响服务）：' + err.message + ' → ' + LOG_DIR);
+      }
+    });
+  } catch (e) {
+    if (!__logWarned) { __logWarned = true; console.error('[access-log] 无法建立日志目录：' + e.message + ' → ' + LOG_DIR); }
+  }
+}
+/* 启动时 + 每 6 小时清一次过期日志 */
+function pruneAccessLogs() {
+  try {
+    ensureLogDir();
+    const cut = Date.now() - LOG_KEEP_DAYS * 86400000;
+    fs.readdirSync(LOG_DIR).forEach(function (f) {
+      if (!/^access-\d{4}-\d{2}-\d{2}\.log$/.test(f)) return;
+      const fp = path.join(LOG_DIR, f);
+      try { if (fs.statSync(fp).mtimeMs < cut) fs.unlinkSync(fp); } catch (e) { }
+    });
+  } catch (e) { }
+}
+pruneAccessLogs();
+setInterval(pruneAccessLogs, 6 * 3600 * 1000).unref();
+
+/* ------------------------------ 举报记录 ------------------------------ */
+const REPORT_FILE = path.join(DATA_DIR, 'reports.json');
+function loadReports() {
+  const d = readJson(REPORT_FILE, null);
+  if (d && Array.isArray(d.items)) return { v: 1, items: d.items };
+  return { v: 1, items: [] };
+}
+function saveReports(doc) { writeJsonAtomic(REPORT_FILE, { v: 1, items: doc.items || [] }); }
+
 function readBody(req) {
   return new Promise(function (resolve, reject) {
     const chunks = [];
@@ -744,6 +804,69 @@ async function handleApi(req, res, pathname) {
       const j = JSON.parse(raw || '{}');
       stats.play(String(j.resourceId || ''));
     } catch (e) { /* 记不上就算了，绝不影响前台 */ }
+    return ok(res, { ok: true });
+  }
+
+
+  /* --- 投诉举报（公开）：写进 data/reports.json，后台「举报」页处理 --- */
+  if (pathname === '/api/report' && method === 'POST') {
+    const ip = sec.clientIp(req) || '';
+    const rl = sec.rateLimit('report:' + (ip || 'unknown'), 20, 60 * 60 * 1000);
+    if (!rl.ok) return fail(res, 429, '提交太频繁，请稍后再试', method, pathname);
+    let b;
+    try { b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); }
+    catch (e) { return fail(res, 400, '请求体不是合法 JSON', method, pathname); }
+    const kinds = ['违法有害信息', '未成年人相关', '侵犯个人信息', '色情低俗', '诈骗与引流', '其他'];
+    const kind = String(b.kind || '').slice(0, 20);
+    const detail = String(b.detail || '').trim().slice(0, 2000);
+    if (!detail) return fail(res, 400, '请写清楚举报内容（至少一句话）', method, pathname);
+    if (kinds.indexOf(kind) === -1) return fail(res, 400, '举报类型不正确', method, pathname);
+    const doc = loadReports();
+    const item = {
+      id: 'rep-' + Date.now().toString(36) + '-' + crypto.randomBytes(3).toString('hex'),
+      ts: Date.now(),
+      kind: kind,
+      target: String(b.target || '').slice(0, 120),
+      detail: detail,
+      contact: String(b.contact || '').slice(0, 120),
+      ip: ip,
+      ua: String(req.headers['user-agent'] || '').slice(0, 200),
+      status: 'open'
+    };
+    doc.items.unshift(item);
+    if (doc.items.length > 2000) doc.items = doc.items.slice(0, 2000);
+    saveReports(doc);
+    logLine(method, pathname, '收到举报 ' + item.id + '（' + kind + '）');
+    return ok(res, { ok: true, id: item.id, note: '已收到，我们会在 48 小时内处理；涉及未成年人的会优先处置' });
+  }
+
+  if (pathname === '/api/reports' && method === 'GET') {
+    const doc = loadReports();
+    const q = /(?:^|&)status=([a-z]+)/.exec(req.url || '');
+    const want = q ? q[1] : '';
+    const list = want ? doc.items.filter(function (x) { return x.status === want; }) : doc.items;
+    return ok(res, { ok: true, reports: list });
+  }
+
+  let rep = /^\/api\/reports\/([^/]+)\/(handle|delete)$/.exec(pathname);
+  if (rep && method === 'POST') {
+    const rid = decodeURIComponent(rep[1]);
+    let b = {};
+    try { b = JSON.parse((await readBody(req)).toString('utf8') || '{}'); } catch (e) { b = {}; }
+    const doc = loadReports();
+    const idx = doc.items.findIndex(function (x) { return x.id === rid; });
+    if (idx === -1) return fail(res, 404, '举报不存在：' + rid, method, pathname);
+    if (rep[2] === 'delete') {
+      doc.items.splice(idx, 1);
+      saveReports(doc);
+      logLine(method, pathname, '删除举报 ' + rid);
+      return ok(res, { ok: true });
+    }
+    doc.items[idx].status = 'handled';
+    doc.items[idx].handledAt = Date.now();
+    doc.items[idx].note = String(b.note || '').slice(0, 300);
+    saveReports(doc);
+    logLine(method, pathname, '处理举报 ' + rid);
     return ok(res, { ok: true });
   }
 
@@ -1204,6 +1327,27 @@ async function handleApi(req, res, pathname) {
 
 /* ------------------------------ 主服务 ------------------------------ */
 const server = http.createServer(function (req, res) {
+  const __t0 = Date.now();
+  const __ip = (req.socket && req.socket.remoteAddress) || '';
+  res.on('finish', function () {
+    if (!/^\/(api|admin)/.test(req.url || '') && (req.url || '').indexOf('/assets/') === 0) return;   // 静态资源不记，省体积
+    appendAccess({
+      ts: new Date().toISOString(),
+      ip: __ip,
+      sport: req.socket && req.socket.remotePort,
+      host: req.headers.host || '',
+      dport: req.socket && req.socket.localPort,
+      method: req.method,
+      path: (req.url || '').split('?')[0].slice(0, 300),
+      status: res.statusCode,
+      ms: Date.now() - __t0,
+      len: res.getHeader('content-length') || '',
+      ua: String(req.headers['user-agent'] || '').slice(0, 200),
+      vid: (function () { const m = /(?:^|;\s*)rp_vid=([^;]+)/.exec(req.headers.cookie || ''); return m ? m[1] : ''; })(),
+      ref: String(req.headers.referer || '').slice(0, 200)
+    });
+  });
+
   sec.applySecurityHeaders(res, { hsts: process.env.PUBLIC_TLS === '1' });
   const __wh = res.writeHead.bind(res);
   res.writeHead = function (code, a, b) { sec.applySecurityHeaders(res, { hsts: process.env.PUBLIC_TLS === '1', relaxed: res.__cspRelaxed }); return __wh(code, a, b); };
@@ -1239,11 +1383,11 @@ const server = http.createServer(function (req, res) {
   /* ★ /api/submissions 是敏感的：那里是待审投稿全文。
      所以它和 stats / export 一样，算「只在管理面存在」的 GET。 */
   const isSensitiveGet = (pathname === '/api/export' || pathname === '/api/import' ||
-    pathname === '/api/stats' || pathname === '/api/submissions');
+    pathname === '/api/stats' || pathname === '/api/submissions' || pathname === '/api/reports');
   /* 前台正常会用的 POST：对话与开局打点 —— 这两个不吃管理令牌
      （否则访客的统计与对话全废）。
      真正的校验在 handleApi 里，且失败按 IP 限流。 */
-  const PUBLIC_POSTS = ['/api/chat', '/api/play'];
+  const PUBLIC_POSTS = ['/api/chat', '/api/play', '/api/report'];
   const isAdminPage = pathname === '/admin' || pathname === '/admin/' || pathname === '/admin/index.html';
   const isAdminAsset = pathname === '/admin/admin.css' || pathname === '/admin/admin.js';
   const settingsNow = settings || {};             // 启动时已载入；两道门共用

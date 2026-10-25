@@ -16,6 +16,10 @@ data/quota.json
 data/stats.json
 # 访客投稿（审核池）：线上运行期数据，不入库
 data/submissions.json
+# 访问日志（留存 180 天，含 IP，绝不入库）
+logs/
+data/logs/
+data/reports.json
 data/server-error.log
 # 邀请码：只存在服务器上，绝不入库（含明文码，等于门钥匙）
 data/invite.json

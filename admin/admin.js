@@ -1710,6 +1710,85 @@
     return { init: init, info: info };
   })();
 
+
+  /* ------------------------------ 举报 ------------------------------ */
+  const reportTab = (function () {
+    let items = [];
+    let onlyOpen = true;
+
+    function fmt(ts) {
+      if (!ts) return '—';
+      const d = new Date(Number(ts));
+      const p = function (n) { return n < 10 ? '0' + n : '' + n; };
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    function esc2(x) { return esc(String(x == null ? '' : x)); }
+
+    function card(it) {
+      const urgent = it.kind === '未成年人相关';
+      return '<div class="review-card' + (urgent ? ' urgent' : '') + '" data-id="' + esc2(it.id) + '">' +
+        '<div class="review-head"><b>' + esc2(it.kind) + '</b>' +
+          (it.status === 'open' ? '<span class="btn btn-sm" style="pointer-events:none;border-color:#c5353f;color:#c5353f">未处理</span>'
+            : '<span class="btn btn-sm" style="pointer-events:none">已处理</span>') +
+          '<span class="hint">' + fmt(it.ts) + ' · ' + esc2(it.id) + (it.target ? ' · ' + esc2(it.target) : '') + '</span></div>' +
+        '<div class="review-body"><p class="note" style="white-space:pre-wrap">' + esc2(it.detail) + '</p>' +
+          (it.contact ? '<p class="note">联系方式：' + esc2(it.contact) + '</p>' : '') +
+          (it.ip ? '<p class="note">来源 IP：' + esc2(it.ip) + '</p>' : '') +
+          (it.status === 'handled' ? '<p class="note">处理备注：' + esc2(it.note || '（无）') + ' · ' + fmt(it.handledAt) + '</p>' : '') +
+        '</div>' +
+        '<div class="review-foot">' +
+          (it.status === 'open'
+            ? '<button class="btn btn-sm btn-primary" data-rp="ok">标记已处理</button>'
+            : '<button class="btn btn-sm" data-rp="reopen">改回未处理</button>') +
+          '<button class="btn btn-sm" data-rp="del">删除记录</button>' +
+        '</div></div>';
+    }
+
+    function render() {
+      const box = $('#reportList');
+      if (!box) return;
+      const list = onlyOpen ? items.filter(function (x) { return x.status === 'open'; }) : items;
+      box.innerHTML = list.length ? list.map(card).join('') : '<p class="note">' + (onlyOpen ? '没有未处理的举报。' : '还没有举报。') + '</p>';
+      $('#reportHint').textContent = '未处理 ' + items.filter(function (x) { return x.status === 'open'; }).length + ' 条 · 共 ' + items.length + ' 条';
+    }
+
+    function load() {
+      return API.get('/api/reports').then(function (d) { items = d.reports || []; render(); })
+        .catch(function (e) { $('#reportList').innerHTML = '<p class="note">读取失败：' + esc2(e.message) + '</p>'; });
+    }
+
+    function init() {
+      const list = $('#reportList');
+      if (!list) return;
+      list.addEventListener('click', function (e) {
+        const b = e.target.closest('[data-rp]');
+        if (!b) return;
+        const id = b.closest('.review-card').dataset.id;
+        const act = b.dataset.rp;
+        if (act === 'del') {
+          if (!confirm('删除这条举报记录？删除后不可恢复（监管核查时会看不到）。')) return;
+          API.post('/api/reports/' + encodeURIComponent(id) + '/delete', {}).then(function () { toast('已删除', 'ok'); load(); })
+            .catch(function (er) { toast('失败：' + er.message, 'err'); });
+          return;
+        }
+        if (act === 'reopen') {
+          API.post('/api/reports/' + encodeURIComponent(id) + '/handle', { note: '' })
+            .then(function () { load(); }).catch(function (er) { toast('失败：' + er.message, 'err'); });
+          return;
+        }
+        const note = prompt('处理说明（比如：已下线该内容 / 已回复举报人 / 移交警方）', '');
+        if (note === null) return;
+        API.post('/api/reports/' + encodeURIComponent(id) + '/handle', { note: note })
+          .then(function () { toast('已标记处理', 'ok'); load(); })
+          .catch(function (er) { toast('失败：' + er.message, 'err'); });
+      });
+      const b1 = $('#btnReportReload'); if (b1) b1.addEventListener('click', load);
+      const b2 = $('#btnReportOpen'); if (b2) b2.addEventListener('click', function () { onlyOpen = true; render(); });
+      const b3 = $('#btnReportAll'); if (b3) b3.addEventListener('click', function () { onlyOpen = false; render(); });
+    }
+    return { init: init, load: load };
+  })();
+
   /* ------------------------------ 审稿 ------------------------------ */
   /* 访客投稿 → 这里过一遍 → 通过就变成资源。判定全在服务端，这页只是入口。 */
   const reviewTab = (function () {
@@ -1823,6 +1902,7 @@
     if (name === 'backup') backupTab.info();
     if (name === 'stats') statsTab.info();
     if (name === 'review') reviewTab.load();
+    if (name === 'report') reportTab.load();
   }
 
   /* ------------------------------ 访问统计 ------------------------------ */
@@ -1890,6 +1970,7 @@
     backupTab.init();
     statsTab.init();
     reviewTab.init();
+    reportTab.init();
     $('#tabs').addEventListener('click', function (e) {
       const t = e.target.closest('.tab');
       if (t) switchTab(t.dataset.tab);
@@ -1907,7 +1988,7 @@
       /* 支持 /admin?tab=settings 这样的直链（也方便自动化截图核对） */
       const qs = new URLSearchParams(location.search);
       const want = qs.get('tab');
-      if (want && ['resources', 'settings', 'backup', 'stats', 'review'].indexOf(want) !== -1) switchTab(want);
+      if (want && ['resources', 'settings', 'backup', 'stats', 'review', 'report'].indexOf(want) !== -1) switchTab(want);
       /* ?focus=<区块 id / 字段名>：载入后把该区块滚进视野（方便直链与自动化截图） */
       const focus = qs.get('focus');
       if (focus) {

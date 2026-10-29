@@ -1,0 +1,7 @@
+displayName = 酒狐npc伙伴+更多饰品
+author = B站dreamtheme
+version = 0.13
+修复了饰品名称显示问题
+修复了不死图腾在染色栏无限使用bug
+将大部分台词改为浮现式
+现在打开ui的条件更加严格

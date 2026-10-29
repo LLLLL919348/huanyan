@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<!-- Import tModLoader mod properties -->
+	<Import Project="..\tModLoader.targets" />
+
+	<!-- General -->
+	<PropertyGroup>
+	</PropertyGroup>
+
+	<!-- 排除 报错 目录：日志/截图/拆包dump/皮肤草稿，既不能参与编译，也不能打进 mod 包。
+	     坑：tModLoader 是用 AdditionalFiles 收集内容（**/*.png 等），只 Remove Content 是排除不掉的。 -->
+	<ItemGroup>
+		<Compile Remove="报错\**" />
+		<Content Remove="报错\**" />
+		<None Remove="报错\**" />
+		<EmbeddedResource Remove="报错\**" />
+		<AdditionalFiles Remove="报错\**" />
+	</ItemGroup>
+
+	<!-- References -->
+	<ItemGroup>
+	</ItemGroup>
+
+</Project>

@@ -44,3 +44,9 @@ desktop.ini
 
 # --- Account DB: contains user emails (personal info), never commit ---
 data/accounts.json
+
+# --- 私有文档：不进公开仓库（本地仍在，桌面与 Documents\幻言-私有 有备份）---
+docs/安全评估报告-幻言.md
+docs/安全评估报告-幻言.docx
+docs/项目计划书.html
+docs/填写姓名并打印.html
